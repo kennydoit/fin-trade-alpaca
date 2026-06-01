@@ -18,7 +18,7 @@ import yaml
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetCalendarRequest
 
-from optimize_and_buy import load_environment_for_mode, resolve_credentials
+from fin_trade_alpaca.optimize_and_buy import load_environment_for_mode, resolve_credentials
 
 EASTERN_TZ = ZoneInfo("America/New_York")
 
@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
             "Run YAML-configured automation for ACH funding and portfolio allocation."
         )
     )
-    parser.add_argument("--config", default="automation.yaml", help="Path to YAML automation file.")
+    parser.add_argument("--config", default="configs/automation.yaml", help="Path to YAML automation file.")
     parser.add_argument(
         "--action",
         choices=["funding", "allocation", "both"],
@@ -298,7 +298,7 @@ def run_allocation(
         return 0
 
     trading_cfg = config.get("trading", {})
-    strategy_file = str(trading_cfg.get("strategy_file", "strategy.json"))
+    strategy_file = str(trading_cfg.get("strategy_file", "configs/strategy.json"))
 
     creds = resolve_credentials(mode)
     trading_client = TradingClient(
@@ -352,7 +352,7 @@ def run_allocation(
 
     cmd = [
         sys.executable,
-        "optimize_and_buy.py",
+        "src/fin_trade_alpaca/optimize_and_buy.py",
         "--mode",
         mode,
         "--run-type",

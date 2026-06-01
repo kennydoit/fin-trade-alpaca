@@ -1,6 +1,6 @@
 trading:
   mode: live
-  strategy_file: strategy.json
+  strategy_file: configs/strategy.json
 
 funding:
   enabled: false

@@ -67,7 +67,7 @@ jobs:
           MAX_NOTIONAL="${{ github.event_name == 'schedule' && '' || inputs.max_notional }}"
           DRY_RUN="${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}"
 
-          CMD=(python optimize_and_buy.py --mode "$MODE" --run-type "$RUN_TYPE" --config strategy.json)
+          CMD=(python src/fin_trade_alpaca/optimize_and_buy.py --mode "$MODE" --run-type "$RUN_TYPE" --config configs/strategy.json)
           if [[ -n "$MAX_NOTIONAL" ]]; then
             CMD+=(--max-notional "$MAX_NOTIONAL")
           fi

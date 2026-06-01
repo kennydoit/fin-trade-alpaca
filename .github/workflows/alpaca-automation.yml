@@ -68,7 +68,7 @@ jobs:
           ACTION="${{ github.event_name == 'schedule' && 'both' || inputs.action }}"
           FORCE_IMMEDIATE="${{ github.event_name == 'schedule' && 'false' || inputs.force_immediate }}"
 
-          CMD=(python run_automation.py --config automation.yaml --mode "$MODE" --action "$ACTION")
+          CMD=(python scripts/run_automation.py --config configs/automation.yaml --mode "$MODE" --action "$ACTION")
           if [[ "$FORCE_IMMEDIATE" == "true" ]]; then
             CMD+=(--force-immediate)
           fi

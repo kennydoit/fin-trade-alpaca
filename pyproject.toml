@@ -10,5 +10,11 @@ dependencies = [
 	"pandas",
 	"python-dotenv",
 	"pyyaml",
-	"requests"
+	"requests",
+	"yfinance"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
 ]

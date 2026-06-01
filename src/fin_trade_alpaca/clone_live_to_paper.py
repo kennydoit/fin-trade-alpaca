@@ -10,7 +10,7 @@ from pathlib import Path
 
 from alpaca.trading.client import TradingClient
 
-from optimize_and_buy import load_environment_for_mode, resolve_credentials
+from fin_trade_alpaca.optimize_and_buy import load_environment_for_mode, resolve_credentials
 
 
 def parse_args() -> argparse.Namespace:
@@ -184,7 +184,7 @@ def execute_paper_clone_orders(
 ) -> int:
     cmd = [
         sys.executable,
-        "optimize_and_buy.py",
+        "src/fin_trade_alpaca/optimize_and_buy.py",
         "--mode",
         "paper",
         "--run-type",
@@ -262,7 +262,8 @@ def main() -> int:
 
     print("Next step:")
     print(
-        f"  python optimize_and_buy.py --mode paper --run-type adhoc --config {output_path} --min-order-notional 0.01"
+        "  python src/fin_trade_alpaca/optimize_and_buy.py "
+        f"--mode paper --run-type adhoc --config {output_path} --min-order-notional 0.01"
     )
 
     if args.auto_execute_paper:

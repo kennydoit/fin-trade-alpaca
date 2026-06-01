@@ -42,38 +42,38 @@ Live mode variables:
 Fallback behavior:
 - In `paper` mode, the script can also use `ALPACA_API_KEY` and `ALPACA_API_SECRET` if present.
 
-3. Customize allocations in `strategy.json`.
+3. Customize allocations in `configs/strategy.json`.
 
 ## Run Commands
 
 Ad-hoc paper run (real paper orders):
 
 ```bash
-python optimize_and_buy.py --mode paper --run-type adhoc --config strategy.json
+python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --config configs/strategy.json
 ```
 
 Ad-hoc preview only:
 
 ```bash
-python optimize_and_buy.py --mode paper --run-type adhoc --config strategy.json --dry-run
+python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --config configs/strategy.json --dry-run
 ```
 
 Scheduled gatekeeper run:
 
 ```bash
-python optimize_and_buy.py --mode paper --run-type scheduled --config strategy.json
+python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type scheduled --config configs/strategy.json
 ```
 
 Live run requires explicit confirmation:
 
 ```bash
-python optimize_and_buy.py --mode live --run-type adhoc --config strategy.json --confirm-live
+python src/fin_trade_alpaca/optimize_and_buy.py --mode live --run-type adhoc --config configs/strategy.json --confirm-live
 ```
 
 Optional spend cap:
 
 ```bash
-python optimize_and_buy.py --mode paper --run-type adhoc --max-notional 250.00
+python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --max-notional 250.00
 ```
 
 ## Clone Live Portfolio To Paper
@@ -83,13 +83,13 @@ Use this workflow when you want paper holdings to mirror the dollar values of li
 Step 1: generate paper clone strategy and wipe paper positions
 
 ```bash
-python clone_live_to_paper.py
+python src/fin_trade_alpaca/clone_live_to_paper.py
 ```
 
 Or run both steps in one command (recommended for minimal slippage):
 
 ```bash
-python clone_live_to_paper.py --auto-execute-paper
+python src/fin_trade_alpaca/clone_live_to_paper.py --auto-execute-paper
 ```
 
 This command:
@@ -105,7 +105,7 @@ When `--auto-execute-paper` is set, it immediately calls `optimize_and_buy.py` i
 Step 2: execute buys in paper using the generated strategy
 
 ```bash
-python optimize_and_buy.py --mode paper --run-type adhoc --config paper_clone_strategy.json --min-order-notional 0.01
+python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --config paper_clone_strategy.json --min-order-notional 0.01
 ```
 
 Notes:
@@ -172,11 +172,11 @@ Security checks enabled in this repo:
 
 ## YAML Automation (Funding + Allocation)
 
-This repository now supports a YAML-driven orchestrator in `run_automation.py`.
+This repository now supports a YAML-driven orchestrator in `scripts/run_automation.py`.
 
 Primary files:
-- `automation.yaml`: active settings.
-- `automation.example.yaml`: template.
+- `configs/automation.yaml`: active settings.
+- `configs/automation.example.yaml`: template.
 - `.github/workflows/alpaca-automation.yml`: scheduled and manual workflow.
 
 ### YAML fields
@@ -228,37 +228,37 @@ If these are missing, funding step is skipped with a clear message.
 Run both funding and allocation now:
 
 ```bash
-python run_automation.py --config automation.yaml --mode paper --action both --force-immediate
+python scripts/run_automation.py --config configs/automation.yaml --mode paper --action both --force-immediate
 ```
 
 Run only funding now:
 
 ```bash
-python run_automation.py --config automation.yaml --mode paper --action funding --force-immediate
+python scripts/run_automation.py --config configs/automation.yaml --mode paper --action funding --force-immediate
 ```
 
 Run only allocation with schedule rules:
 
 ```bash
-python run_automation.py --config automation.yaml --mode paper --action allocation
+python scripts/run_automation.py --config configs/automation.yaml --mode paper --action allocation
 ```
 
 Override investment amount from CLI for a one-off run:
 
 ```bash
-python run_automation.py --config automation.yaml --mode paper --action allocation --force-immediate --investment-amount 100.00
+python scripts/run_automation.py --config configs/automation.yaml --mode paper --action allocation --force-immediate --investment-amount 100.00
 ```
 
 Live mode requires explicit confirmation before execution:
 
 ```bash
-python run_automation.py --config automation.yaml --mode live --action allocation --force-immediate --investment-amount 100.00 --execute-live-now
+python scripts/run_automation.py --config configs/automation.yaml --mode live --action allocation --force-immediate --investment-amount 100.00 --execute-live-now
 ```
 
 For non-interactive environments, pass:
 
 ```bash
-python run_automation.py --config automation.yaml --mode live --action allocation --force-immediate --investment-amount 100.00 --execute-live-now --confirm-live
+python scripts/run_automation.py --config configs/automation.yaml --mode live --action allocation --force-immediate --investment-amount 100.00 --execute-live-now --confirm-live
 ```
 
 Live safety gates for non-dry-run allocation:
