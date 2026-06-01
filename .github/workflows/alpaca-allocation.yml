@@ -1,0 +1,82 @@
+name: Alpaca Allocation
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "30 14 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Trading mode"
+        type: choice
+        required: true
+        default: paper
+        options:
+          - paper
+          - live
+      run_type:
+        description: "Use scheduled gatekeeper or force ad-hoc"
+        type: choice
+        required: true
+        default: adhoc
+        options:
+          - adhoc
+          - scheduled
+      max_notional:
+        description: "Optional max spend for this run (e.g., 250.00)"
+        type: string
+        required: false
+      dry_run:
+        description: "Preview allocations without placing orders"
+        type: boolean
+        required: true
+        default: true
+
+jobs:
+  allocate:
+    runs-on: ubuntu-latest
+    environment: alpaca-trading
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Run allocation job
+        shell: bash
+        env:
+          ALPACA_PAPER_API_KEY: ${{ secrets.ALPACA_PAPER_API_KEY }}
+          ALPACA_PAPER_API_SECRET: ${{ secrets.ALPACA_PAPER_API_SECRET }}
+          ALPACA_LIVE_API_KEY: ${{ secrets.ALPACA_LIVE_API_KEY }}
+          ALPACA_LIVE_API_SECRET: ${{ secrets.ALPACA_LIVE_API_SECRET }}
+          ALLOW_REAL_ORDERS: ${{ secrets.ALLOW_REAL_ORDERS }}
+          ALLOW_LIVE_TRADING: ${{ secrets.ALLOW_LIVE_TRADING }}
+        run: |
+          MODE="${{ github.event_name == 'schedule' && 'paper' || inputs.mode }}"
+          RUN_TYPE="${{ github.event_name == 'schedule' && 'scheduled' || inputs.run_type }}"
+          MAX_NOTIONAL="${{ github.event_name == 'schedule' && '' || inputs.max_notional }}"
+          DRY_RUN="${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}"
+
+          CMD=(python optimize_and_buy.py --mode "$MODE" --run-type "$RUN_TYPE" --config strategy.json)
+          if [[ -n "$MAX_NOTIONAL" ]]; then
+            CMD+=(--max-notional "$MAX_NOTIONAL")
+          fi
+          if [[ "$DRY_RUN" == "true" ]]; then
+            CMD+=(--dry-run)
+          fi
+          if [[ "$MODE" == "live" && "$DRY_RUN" != "true" ]]; then
+            CMD+=(--confirm-live)
+          fi
+
+          echo "Executing: ${CMD[*]}"
+          "${CMD[@]}"

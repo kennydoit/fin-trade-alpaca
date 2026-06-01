@@ -1,0 +1,26 @@
+trading:
+  mode: live
+  strategy_file: strategy.json
+
+funding:
+  enabled: false
+  provider: external_deposit
+  schedule:
+    - 15
+    - last_day
+  amount: 0.00
+  dry_run: true
+  require_market_open: false
+  note: Use Alpaca UI or your bank to deposit funds. Broker API ACH is disabled.
+
+allocation:
+  enabled: true
+  schedule:
+    - 15
+    - last_day
+  require_market_open: true
+  min_new_cash: 2.00
+  reserve_cash: 0.00
+  max_notional_per_run: 100.00
+  min_order_notional: 1.00
+  dry_run: true

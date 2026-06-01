@@ -1,0 +1,21 @@
+{
+  "buckets": {
+    "core": {
+      "weight": 0.5,
+      "assets": {
+        "SPLG": 0.7,
+        "VXUS": 0.3
+      }
+    },
+    "growth": {
+      "weight": 0.25,
+      "assets": {
+        "DTCR": 1.0
+      }
+    },
+    "short_term": {
+      "weight": 0.25,
+      "assets": {}
+    }
+  }
+}
