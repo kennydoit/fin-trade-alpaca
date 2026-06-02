@@ -4,8 +4,6 @@ permissions:
   contents: read
 
 on:
-  schedule:
-    - cron: "30 14 * * *"
   workflow_dispatch:
     inputs:
       mode:
