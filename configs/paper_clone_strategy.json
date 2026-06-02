@@ -1,17 +1,15 @@
 {
   "buckets": {
     "core": {
-      "weight": 0.85,
+      "weight": 1.0,
       "assets": {
-        "AIQ": 0.705,
-        "SCHB": 0.295
+        "AIQ": 0.007731514,
+        "DTCR": 0.00252877
       }
     },
     "growth": {
-      "weight": 0.15,
-      "assets": {
-        "DTCR": 1.0
-      }
+      "weight": 0.0,
+      "assets": {}
     },
     "short_term": {
       "weight": 0.0,
