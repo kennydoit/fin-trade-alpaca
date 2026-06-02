@@ -95,17 +95,17 @@ python src/fin_trade_alpaca/clone_live_to_paper.py --auto-execute-paper
 This command:
 - Sells all current paper positions.
 - Reads live positions and their market values.
-- Writes `paper_clone_strategy.json` using the same schema as `strategy.json`.
+	- Writes `configs/paper_clone_strategy.json` using the same schema as `strategy.json`.
 
 When `--auto-execute-paper` is set, it immediately calls `optimize_and_buy.py` in paper mode using:
-- `--config paper_clone_strategy.json`
+- `--config configs/paper_clone_strategy.json`
 - `--max-notional <live total market value>`
 - `--min-order-notional 0.01` (or your override)
 
 Step 2: execute buys in paper using the generated strategy
 
 ```bash
-python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --config paper_clone_strategy.json --min-order-notional 0.01
+python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --config configs/paper_clone_strategy.json --min-order-notional 0.01
 ```
 
 Notes:

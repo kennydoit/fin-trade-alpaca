@@ -1,0 +1,9 @@
+Clone report generated: 20260601:0000
+
+symbol | live_qty | live_value | paper_qty | paper_value
+-----------------------------------------------------
+AIQ | 1.11577256 | $76.54 | 1.115274803 | $76.51
+DTCR | 0.7914899 | $25.03 | 0.792192154 | $25.06
+
+Total live value: $101.57
+Total paper value: $101.57

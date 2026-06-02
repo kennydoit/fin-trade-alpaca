@@ -5,6 +5,7 @@ import calendar
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_DOWN
@@ -102,6 +103,23 @@ def parse_args() -> argparse.Namespace:
         "--confirm-live",
         action="store_true",
         help="Required when --mode live and not using --dry-run.",
+    )
+    parser.add_argument(
+        "--poll-fills",
+        action="store_true",
+        help="After submitting orders, poll until fills or timeout (disabled by default).",
+    )
+    parser.add_argument(
+        "--poll-timeout",
+        type=int,
+        default=180,
+        help="Polling timeout in seconds when --poll-fills is used. Defaults to 180.",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=5,
+        help="Polling interval in seconds when --poll-fills is used. Defaults to 5.",
     )
     return parser.parse_args()
 
@@ -251,10 +269,10 @@ def submit_orders(
     client: TradingClient,
     notionals: Dict[str, Decimal],
     dry_run: bool,
-) -> None:
+) -> list[str]:
     if not notionals:
         print("No orders to submit after min-order filter. Leaving cash unallocated.")
-        return
+        return []
 
     print("Order plan:")
     for symbol, notional in sorted(notionals.items()):
@@ -262,8 +280,9 @@ def submit_orders(
 
     if dry_run:
         print("Dry run enabled; no orders submitted.")
-        return
+        return []
 
+    submitted_ids: list[str] = []
     for symbol, notional in sorted(notionals.items()):
         req = MarketOrderRequest(
             symbol=symbol,
@@ -273,9 +292,53 @@ def submit_orders(
         )
         try:
             order = client.submit_order(req)
+            submitted_ids.append(order.id)
             print(f"Submitted {symbol} order id={order.id} notional=${notional}")
         except APIError as ex:
             print(f"Order failed for {symbol}: {ex}")
+
+    return submitted_ids
+
+
+def poll_orders_for_fills(client: TradingClient, order_ids: list[str], timeout_sec: int = 180, poll_interval: int = 5) -> dict:
+    """Poll Alpaca for the given order IDs until all are filled or timeout.
+
+    Returns a mapping order_id -> final_status.
+    """
+    if not order_ids:
+        return {}
+
+    deadline = time.time() + float(timeout_sec)
+    pending = set(order_ids)
+    final_status: dict = {}
+
+    print(f"Polling for fills for {len(order_ids)} orders, timeout={timeout_sec}s")
+    while pending and time.time() < deadline:
+        for oid in list(pending):
+            try:
+                order = client.get_order(oid)
+                status = getattr(order, "status", "unknown")
+            except Exception as ex:
+                status = f"error:{ex}"
+
+            print(f"  order {oid} status={status}")
+
+            if status == "filled" or status == "canceled" or status == "rejected":
+                final_status[oid] = status
+                pending.remove(oid)
+
+        if pending:
+            time.sleep(max(1, poll_interval))
+
+    # mark any still-pending orders with their last-observed status
+    for oid in pending:
+        try:
+            order = client.get_order(oid)
+            final_status[oid] = getattr(order, "status", "unknown")
+        except Exception:
+            final_status[oid] = "unknown"
+
+    return final_status
 
 
 def choose_spendable_cash(available_cash: Decimal, max_notional: Decimal | None) -> Decimal:
@@ -359,7 +422,13 @@ def main() -> int:
         return 0
 
     notionals = distribute_notionals(spendable_cash, symbol_weights, args.min_order_notional)
-    submit_orders(client, notionals, args.dry_run)
+    order_ids = submit_orders(client, notionals, args.dry_run)
+
+    if args.poll_fills and order_ids and not args.dry_run:
+        statuses = poll_orders_for_fills(client, order_ids, timeout_sec=args.poll_timeout, poll_interval=args.poll_interval)
+        print("Final order statuses:")
+        for oid, st in statuses.items():
+            print(f"  {oid}: {st}")
     return 0
 
 

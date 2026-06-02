@@ -7,8 +7,12 @@ import sys
 import time
 from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
+import csv
+from datetime import datetime
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import MarketOrderRequest
 
 from fin_trade_alpaca.optimize_and_buy import load_environment_for_mode, resolve_credentials
 
@@ -23,8 +27,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default="paper_clone_strategy.json",
-        help="Output strategy JSON path. Defaults to paper_clone_strategy.json.",
+        default="configs/paper_clone_strategy.json",
+        help="Output strategy JSON path. Defaults to configs/paper_clone_strategy.json.",
     )
     parser.add_argument(
         "--wait-timeout-sec",
@@ -112,9 +116,84 @@ def liquidate_paper_positions(
         if elapsed >= wait_timeout_sec:
             print(
                 "Timed out waiting for paper liquidations to fully clear. "
-                f"Remaining positions: {remaining}."
+                f"Remaining positions: {remaining}. Attempting per-symbol fallback sells."
             )
+
+            # Attempt to cancel any lingering orders, then per-symbol market sells as a fallback
+            try:
+                paper_client.cancel_all_orders()
+                print("Attempted to cancel any lingering open orders before fallback sells.")
+            except Exception:
+                print("Unable to cancel lingering orders before fallback; proceeding to per-symbol sells.")
+
+            # Attempt per-symbol market sells as a fallback
+            try:
+                remaining_positions = paper_client.get_all_positions()
+            except Exception:
+                remaining_positions = []
+
+            for pos in remaining_positions:
+                sym = str(pos.symbol).strip().upper()
+                mv = Decimal(str(pos.market_value)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                print(f"Fallback SELL MARKET {sym} for notional ${mv}")
+                try:
+                    req = MarketOrderRequest(
+                        symbol=sym,
+                        notional=float(mv),
+                        side=OrderSide.SELL,
+                        time_in_force=TimeInForce.DAY,
+                    )
+                    paper_client.submit_order(req)
+                    print(f"Submitted fallback sell for {sym} by notional ${mv}")
+                except Exception as ex:
+                    print(f"Fallback sell by notional failed for {sym}: {ex}. Trying qty-based sell.")
+                    # Try qty-based sell as a fallback
+                    try:
+                        qty = float(pos.qty)
+                        req2 = MarketOrderRequest(
+                            symbol=sym,
+                            qty=qty,
+                            side=OrderSide.SELL,
+                            time_in_force=TimeInForce.DAY,
+                        )
+                        paper_client.submit_order(req2)
+                        print(f"Submitted fallback sell for {sym} by qty {qty}")
+                    except Exception as ex2:
+                        print(f"Fallback sell by qty failed for {sym}: {ex2}")
+
+            # Wait a short period for fallback sells to clear
+            extra_wait = min(60, wait_timeout_sec)
+            print(f"Waiting {extra_wait}s for fallback sells to clear...")
+            time.sleep(extra_wait)
+
+            remaining_after = get_paper_position_count(paper_client)
+            if remaining_after == 0:
+                print("Paper positions cleared after fallback sells.")
+                return True
+            print(f"Positions still remain after fallback: {remaining_after}. Giving up.")
             return False
+
+        # Diagnostic: list open orders if API supports it
+        try:
+            open_orders = paper_client.get_all_orders(status="open")
+        except Exception:
+            try:
+                open_orders = paper_client.get_orders(status="open")
+            except Exception:
+                open_orders = []
+
+        if open_orders:
+            print(f"Open orders detected: {len(open_orders)}")
+            for o in open_orders:
+                oid = getattr(o, "id", getattr(o, "order_id", "<id?>"))
+                sym = getattr(o, "symbol", getattr(o, "client_order_id", "<sym?>"))
+                print(f"  order id={oid} symbol={sym}")
+            # Try canceling all open orders to allow closes to fill
+            try:
+                paper_client.cancel_all_orders()
+                print("Canceled open orders to unblock liquidations.")
+            except Exception:
+                print("Unable to cancel open orders via API; continuing to wait.")
 
         print(f"Waiting for paper liquidations to clear... remaining={remaining}")
         time.sleep(max(1, poll_interval_sec))
@@ -171,9 +250,73 @@ def build_strategy_for_exact_dollar_targets(
 
 
 def write_strategy(path: Path, strategy: dict) -> None:
+    # Ensure parent directory exists (configs/ by default)
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(strategy, f, indent=2)
         f.write("\n")
+
+
+def produce_side_by_side_report(live_client: TradingClient, paper_client: TradingClient, report_path: Path) -> None:
+    live_positions = {p.symbol.strip().upper(): p for p in live_client.get_all_positions()}
+    paper_positions = {p.symbol.strip().upper(): p for p in paper_client.get_all_positions()}
+    symbols = sorted(set(list(live_positions.keys()) + list(paper_positions.keys())))
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    with report_path.open("w", encoding="utf-8", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["symbol", "live_qty", "live_value", "paper_qty", "paper_value"])
+        for s in symbols:
+            lp = live_positions.get(s)
+            pp = paper_positions.get(s)
+            lq = getattr(lp, "qty", 0) if lp else 0
+            lv = getattr(lp, "market_value", 0) if lp else 0
+            pq = getattr(pp, "qty", 0) if pp else 0
+            pv = getattr(pp, "market_value", 0) if pp else 0
+            writer.writerow([s, str(lq), str(lv), str(pq), str(pv)])
+
+    print(f"Wrote side-by-side report to {report_path}")
+
+
+def produce_text_clone_report(live_client: TradingClient, paper_client: TradingClient, reports_dir: Path) -> Path:
+    # timestamp format requested by user: YYYYMMDD:HHMM
+    now = datetime.now()
+    ts_colon = now.strftime("%Y%m%d:%H%M")
+    # Windows filenames cannot include ':', replace with '-'
+    ts_safe = ts_colon.replace(':', '-')
+    filename = f"clone report - {ts_safe}.txt"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    out_path = reports_dir / filename
+
+    live_positions = {p.symbol.strip().upper(): p for p in live_client.get_all_positions()}
+    paper_positions = {p.symbol.strip().upper(): p for p in paper_client.get_all_positions()}
+    symbols = sorted(set(list(live_positions.keys()) + list(paper_positions.keys())))
+
+    total_live = Decimal('0')
+    total_paper = Decimal('0')
+
+    with out_path.open('w', encoding='utf-8') as f:
+        f.write(f"Clone report generated: {ts_colon}\n")
+        f.write("\n")
+        f.write("symbol | live_qty | live_value | paper_qty | paper_value\n")
+        f.write("-----------------------------------------------------\n")
+        for s in symbols:
+            lp = live_positions.get(s)
+            pp = paper_positions.get(s)
+            lq = getattr(lp, 'qty', 0) if lp else 0
+            lv = Decimal(str(getattr(lp, 'market_value', 0) if lp else 0))
+            pq = getattr(pp, 'qty', 0) if pp else 0
+            pv = Decimal(str(getattr(pp, 'market_value', 0) if pp else 0))
+            total_live += lv
+            total_paper += pv
+            f.write(f"{s} | {lq} | ${lv.quantize(Decimal('0.01'))} | {pq} | ${pv.quantize(Decimal('0.01'))}\n")
+
+        f.write("\n")
+        f.write(f"Total live value: ${total_live.quantize(Decimal('0.01'))}\n")
+        f.write(f"Total paper value: ${total_paper.quantize(Decimal('0.01'))}\n")
+
+    print(f"Wrote text clone report to {out_path} (timestamp {ts_colon})")
+    return out_path
 
 
 def execute_paper_clone_orders(
@@ -265,6 +408,19 @@ def main() -> int:
         "  python src/fin_trade_alpaca/optimize_and_buy.py "
         f"--mode paper --run-type adhoc --config {output_path} --min-order-notional 0.01"
     )
+
+    # Always produce a side-by-side report of live vs paper positions as part of the process
+    report_path = output_path.parent / f"{output_path.stem}_report.csv"
+    try:
+        produce_side_by_side_report(live_client, paper_client, report_path)
+    except Exception as ex:
+        print(f"Failed to produce side-by-side report: {ex}")
+    # Also write a human-readable text clone report into reports/
+    try:
+        reports_dir = Path('reports')
+        text_path = produce_text_clone_report(live_client, paper_client, reports_dir)
+    except Exception as ex:
+        print(f"Failed to produce text clone report: {ex}")
 
     if args.auto_execute_paper:
         if live_total <= Decimal("0"):
