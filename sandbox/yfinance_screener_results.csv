@@ -1,0 +1,188 @@
+symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice
+ZS,"Zscaler, Inc.",NMS,Technology,Software - Infrastructure,155.71,143.355
+ZM,"Zoom Communications, Inc.",NMS,Technology,Software - Application,111.62,111.825
+ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,25.22,24.76
+ZBRA,Zebra Technologies Corporation,NMS,Technology,Communication Equipment,249.96,252.26
+YOU,"Clear Secure, Inc.",NYQ,Technology,Software - Application,57.43,57.37
+YMM,Full Truck Alliance Co. Ltd.,NYQ,Technology,Software - Application,9.02,9.555
+YALA,Yalla Group Limited,NYQ,Technology,Software - Application,5.8,5.66
+XYZ,"Block, Inc.",NYQ,Technology,Software - Infrastructure,76.1,74.4668
+XPER,Xperi Inc.,NYQ,Technology,Software - Application,7.8,7.735
+XNET,Xunlei Limited,NMS,Technology,Software - Infrastructure,5.98,5.53
+WSE,Wise Group plc,NMS,Technology,Information Technology Services,12.1,11.76
+WOLF,"Wolfspeed, Inc.",NYQ,Technology,Semiconductors,52.95,59.89
+WLTH,Wealthfront Corporation,NMS,Technology,Software - Application,12.19,12.195
+WK,Workiva Inc.,NYQ,Technology,Software - Application,52.83,51.545
+WIX,Wix.com Ltd.,NMS,Technology,Software - Infrastructure,62.54,58.05
+WEX,WEX Inc.,NYQ,Technology,Software - Infrastructure,149.42,146.725
+WDAY,"Workday, Inc.",NMS,Technology,Software - Application,157.23,147.62
+VYX,NCR Voyix Corporation,NYQ,Technology,Information Technology Services,7.49,7.145
+VSH,"Vishay Intertechnology, Inc.",NYQ,Technology,Semiconductors,55.99,63.26
+VSAT,"ViaSat, Inc.",NMS,Technology,Communication Equipment,72.86,73.48
+VRSN,"VeriSign, Inc.",NMS,Technology,Software - Infrastructure,296.59,301.99
+VRNS,"Varonis Systems, Inc.",NMS,Technology,Software - Infrastructure,36.11,35.44
+VPG,"Vishay Precision Group, Inc.",NYQ,Technology,Scientific & Technical Instruments,126.24,134.44
+VNT,Vontier Corporation,NYQ,Technology,Scientific & Technical Instruments,28.46,28.34
+VNET,"VNET Group, Inc.",NMS,Technology,Information Technology Services,10.6,10.935
+VISN,"Vistance Networks, Inc.",NMS,Technology,Communication Equipment,12.27,12.34
+VICR,Vicor Corporation,NMS,Technology,Electronic Components,328.85,320.3
+VIAV,Viavi Solutions Inc.,NMS,Technology,Communication Equipment,47.49,52.0
+VIA,"Via Transportation, Inc.",NYQ,Technology,Software - Application,17.04,15.7
+VECO,Veeco Instruments Inc.,NMS,Technology,Semiconductor Equipment & Materials,57.245,58.81
+UPBD,"Upbound Group, Inc.",NMS,Technology,Software - Application,19.06,18.7
+UMC,United Microelectronics Corpora,NYQ,Technology,Semiconductors,22.89,22.305
+UCTT,"Ultra Clean Holdings, Inc.",NMS,Technology,Semiconductor Equipment & Materials,84.7,88.165
+UBER,"Uber Technologies, Inc.",NYQ,Technology,Software - Application,73.77,72.01
+U,Unity Software Inc.,NYQ,Technology,Software - Application,32.17,30.84
+TYL,"Tyler Technologies, Inc.",NYQ,Technology,Software - Application,329.83,311.705
+TXN,Texas Instruments Incorporated,NMS,Technology,Semiconductors,293.2,301.91
+TWLO,Twilio Inc.,NYQ,Technology,Software - Infrastructure,227.54,225.405
+TTMI,"TTM Technologies, Inc.",NMS,Technology,Electronic Components,172.44,179.02
+TTAN,"ServiceTitan, Inc.",NMS,Technology,Software - Application,77.68,73.54
+TSM,Taiwan Semiconductor Manufactur,NYQ,Technology,Semiconductors,435.63,443.95
+TSEM,Tower Semiconductor Ltd.,NMS,Technology,Semiconductors,252.53,269.67
+TSAT,Telesat Corporation,NMS,Technology,Communication Equipment,49.71,50.09
+TRMB,Trimble Inc.,NMS,Technology,Scientific & Technical Instruments,58.15,56.73
+TOST,"Toast, Inc.",NYQ,Technology,Software - Infrastructure,27.74,26.365
+TER,"Teradyne, Inc.",NMS,Technology,Semiconductor Equipment & Materials,369.47,387.68
+TENB,"Tenable Holdings, Inc.",NMS,Technology,Software - Infrastructure,29.32,29.97
+TEL,TE Connectivity plc,NYQ,Technology,Electronic Components,211.09,213.855
+TEAM,Atlassian Corporation,NMS,Technology,Software - Application,115.95,108.37
+TDC,Teradata Corporation,NYQ,Technology,Software - Infrastructure,36.83,36.44
+TASK,"TaskUs, Inc.",NMS,Technology,Information Technology Services,6.6,6.44
+SYNA,Synaptics Incorporated,NMS,Technology,Semiconductors,134.93,142.11
+SWKS,"Skyworks Solutions, Inc.",NMS,Technology,Semiconductors,75.49,79.19
+SVCO,"Silvaco Group, Inc.",NMS,Technology,Software - Application,10.67,11.95
+STNE,StoneCo Ltd.,NMS,Technology,Software - Infrastructure,11.69,11.1761
+STM,STMicroelectronics N.V.,NYQ,Technology,Semiconductors,69.02,78.79
+ST,Sensata Technologies Holding pl,NYQ,Technology,Scientific & Technical Instruments,49.29,52.83
+SSYS,"Stratasys, Ltd.",NMS,Technology,Computer Hardware,10.69,10.52
+SSNC,"SS&C Technologies Holdings, Inc",NMS,Technology,Software - Application,69.08,67.99
+SRAD,Sportradar Group AG,NMS,Technology,Software - Application,13.77,13.385
+SPSC,"SPS Commerce, Inc.",NMS,Technology,Software - Application,59.64,57.43
+SONY,Sony Group Corporation,NYQ,Technology,Consumer Electronics,22.57,22.805
+SONO,"Sonos, Inc.",NMS,Technology,Consumer Electronics,16.17,16.54
+SNX,TD SYNNEX Corporation,NYQ,Technology,Electronics & Computer Distribution,270.5,278.765
+SNOW,Snowflake Inc.,NYQ,Technology,Software - Application,280.16,263.355
+SMTC,Semtech Corporation,NMS,Technology,Semiconductors,149.58,165.77
+SMCI,"Super Micro Computer, Inc.",NMS,Technology,Computer Hardware,46.88,49.292
+SLAB,"Silicon Laboratories, Inc.",NMS,Technology,Semiconductors,217.88,218.5
+SIMO,Silicon Motion Technology Corpo,NMS,Technology,Semiconductors,268.05,295.96
+SHOP,Shopify Inc.,NMS,Technology,Software - Application,124.12,116.4
+SEDG,"SolarEdge Technologies, Inc.",NMS,Technology,Solar,75.8,77.28
+SCSC,"ScanSource, Inc.",NMS,Technology,Electronics & Computer Distribution,48.13,48.085
+SAP,SAP  SE,NYQ,Technology,Software - Application,196.11,190.73
+SANM,Sanmina Corporation,NMS,Technology,Electronic Components,264.88,276.875
+SAIL,"SailPoint, Inc.",NMS,Technology,Software - Infrastructure,19.25,19.6
+SAIC,Science Applications Internatio,NMS,Technology,Information Technology Services,114.843,112.3
+S,"SentinelOne, Inc.",NYQ,Technology,Software - Infrastructure,17.81,17.685
+RXT,"Rackspace Technology, Inc.",NMS,Technology,Software - Infrastructure,5.92,5.45
+RUN,Sunrun Inc.,NMS,Technology,Solar,15.58,15.085
+ROP,"Roper Technologies, Inc.",NMS,Technology,Software - Application,344.25,333.04
+ROG,Rogers Corporation,NYQ,Technology,Electronic Components,147.02,154.14
+RNG,"Ringcentral, Inc.",NYQ,Technology,Software - Application,49.025,46.21
+RMBS,"Rambus, Inc.",NMS,Technology,Semiconductors,147.48,158.74
+RELY,"Remitly Global, Inc.",NMS,Technology,Software - Infrastructure,21.03,20.355
+RDWR,Radware Ltd.,NMS,Technology,Software - Infrastructure,31.69,31.54
+RBRK,"Rubrik, Inc.",NYQ,Technology,Software - Infrastructure,85.07,82.53
+RAMP,"LiveRamp Holdings, Inc.",NYQ,Technology,Software - Infrastructure,37.58,37.59
+RAL,Ralliant Corporation,NYQ,Technology,Electronic Components,61.46,61.66
+QTWO,"Q2 Holdings, Inc.",NYQ,Technology,Software - Application,52.57,48.415
+QRVO,"Qorvo, Inc.",NMS,Technology,Semiconductors,99.97,103.03
+QLYS,"Qualys, Inc.",NMS,Technology,Software - Infrastructure,114.02,113.01
+QCOM,QUALCOMM Incorporated,NMS,Technology,Semiconductors,228.99,240.8
+QBTS,D-Wave Quantum Inc.,NYQ,Technology,Computer Hardware,29.18,29.4
+Q,"Qnity Electronics, Inc.",NYQ,Technology,Semiconductor Equipment & Materials,151.92,155.03
+PTRN,Pattern Group Inc. - Series A,NMS,Technology,Software - Application,19.59,20.11
+PTC,PTC Inc.,NMS,Technology,Software - Application,145.08,141.41
+PSN,Parsons Corporation,NYQ,Technology,Information Technology Services,60.66,60.03
+PSFE,Paysafe Limited,NYQ,Technology,Software - Infrastructure,8.07,7.61
+PRGS,Progress Software Corporation,NMS,Technology,Software - Infrastructure,35.32,33.8
+POWI,"Power Integrations, Inc.",NMS,Technology,Semiconductors,81.91,82.57
+PONY,Pony AI Inc.,NMS,Technology,Information Technology Services,10.79,10.76
+PLXS,Plexus Corp.,NMS,Technology,Electronic Components,271.4,280.82
+PLUS,ePlus inc.,NMS,Technology,Software - Application,81.98,83.335
+PLTR,Palantir Technologies Inc.,NMS,Technology,Software - Infrastructure,160.65,153.325
+PLAB,"Photronics, Inc.",NMS,Technology,Semiconductor Equipment & Materials,31.87,32.87
+PICS,PicS N.V.,NMS,Technology,Software - Infrastructure,11.07,10.915
+PI,"Impinj, Inc.",NMS,Technology,Semiconductors,142.67,142.11
+PENG,"Penguin Solutions, Inc.",NMS,Technology,Information Technology Services,59.71,70.66
+PEGA,Pegasystems Inc.,NMS,Technology,Software - Application,37.93,36.21
+PDFS,"PDF Solutions, Inc.",NMS,Technology,Software - Application,51.28,53.95
+PD,"PagerDuty, Inc.",NYQ,Technology,Software - Application,10.69,10.2524
+PCTY,Paylocity Holding Corporation,NMS,Technology,Software - Application,122.49,117.395
+PCOR,"Procore Technologies, Inc.",NYQ,Technology,Software - Application,55.23,52.21
+PAYX,"Paychex, Inc.",NMS,Technology,Software - Application,102.44,100.15
+PAYP,PayPay Corporation - American D,NMS,Technology,Software - Infrastructure,18.61,18.49
+PAYC,"Paycom Software, Inc.",NYQ,Technology,Software - Application,148.58,144.595
+PAY,"Paymentus Holdings, Inc.",NYQ,Technology,Software - Infrastructure,24.26,22.3
+PATH,"UiPath, Inc.",NYQ,Technology,Software - Infrastructure,13.1,12.08
+PAR,PAR Technology Corporation,NYQ,Technology,Software - Application,16.26,15.26
+PANW,"Palo Alto Networks, Inc.",NMS,Technology,Software - Infrastructure,300.48,293.7
+PAGS,PagSeguro Digital Ltd.,NYQ,Technology,Software - Infrastructure,9.43,9.21
+P,"Everpure, Inc.",NYQ,Technology,Computer Hardware,84.45,83.18
+OUST,"Ouster, Inc.",NMS,Technology,Electronic Components,44.93,47.315
+OTEX,Open Text Corporation,NMS,Technology,Software - Application,25.38,24.91
+OSIS,"OSI Systems, Inc.",NMS,Technology,Electronic Components,213.37,213.37
+ORCL,Oracle Corporation,NYQ,Technology,Software - Infrastructure,248.15,243.535
+OOMA,"Ooma, Inc.",NYQ,Technology,Software - Application,18.14,17.63
+ONTO,Onto Innovation Inc.,NYQ,Technology,Semiconductor Equipment & Materials,255.71,272.18
+ON,ON Semiconductor Corporation,NMS,Technology,Semiconductors,120.92,127.89
+OLED,Universal Display Corporation,NMS,Technology,Electronic Components,95.34,93.955
+OKTA,"Okta, Inc.",NMS,Technology,Software - Infrastructure,139.79,135.5
+OCTVV,Octave Intelligence plc,NMS,Technology,Software - Application,,17.48
+OCTV,Octave Intelligence plc,NMS,Technology,Software - Application,20.02,23.3
+NXT,Nextpower Inc.,NMS,Technology,Solar,145.02,149.606
+NXPI,NXP Semiconductors N.V.,NMS,Technology,Semiconductors,311.38,321.145
+NVDA,NVIDIA Corporation,NMS,Technology,Semiconductors,224.36,224.125
+NTSK,"Netskope, Inc.",NMS,Technology,Software - Infrastructure,12.86,12.435
+NTNX,"Nutanix, Inc.",NMS,Technology,Software - Infrastructure,55.87,54.765
+NTGR,"NETGEAR, Inc.",NMS,Technology,Communication Equipment,26.71,27.295
+NTCT,"NetScout Systems, Inc.",NMS,Technology,Software - Infrastructure,42.88,43.66
+NTAP,"NetApp, Inc.",NMS,Technology,Software - Infrastructure,179.7,175.32
+NSIT,"Insight Enterprises, Inc.",NMS,Technology,Electronics & Computer Distribution,117.77,120.2
+NOW,"ServiceNow, Inc.",NYQ,Technology,Software - Application,135.86,126.33
+NOVT,Novanta Inc.,NMS,Technology,Scientific & Technical Instruments,163.46,169.19
+NOK,Nokia Corporation Sponsored,NYQ,Technology,Communication Equipment,16.25,16.835
+NIQ,NIQ Global Intelligence plc,NYQ,,,8.91,8.485
+NICE,NICE Ltd,NMS,Technology,Software - Application,99.45,96.32
+NET,"Cloudflare, Inc.",NYQ,Technology,Software - Infrastructure,270.82,272.78
+NCNO,"nCino, Inc.",NMS,Technology,Software - Application,17.19,16.46
+NAVN,"Navan, Inc.",NMS,Technology,Software - Application,22.78,23.01
+NATL,NCR Atleos Corporation,NYQ,Technology,Software - Application,44.47,44.365
+MXL,"MaxLinear, Inc",NMS,Technology,Semiconductors,86.23,88.78
+MX,Magnachip Semiconductor Corpora,NYQ,Technology,Semiconductors,7.83,8.905
+MTSI,MACOM Technology Solutions Hold,NMS,Technology,Semiconductors,353.79,375.515
+MTLS,Materialise NV,NMS,Technology,Software - Application,6.86,6.93
+MSTR,Strategy Inc,NMS,Technology,Software - Application,149.78,137.67
+MSI,"Motorola Solutions, Inc.",NYQ,Technology,Communication Equipment,411.58,411.9
+MSFT,Microsoft Corporation,NMS,Technology,Software - Infrastructure,460.52,444.34
+MRVL,"Marvell Technology, Inc.",NMS,Technology,Semiconductors,219.43,283.695
+MNTN,"MNTN, Inc.",NYQ,Technology,Software - Application,10.74,10.66
+MNDY,monday.com Ltd.,NMS,Technology,Software - Application,95.47,91.24
+MLAB,"Mesa Laboratories, Inc.",NMS,Technology,Scientific & Technical Instruments,105.26,105.91
+MKSI,MKS Inc.,NMS,Technology,Scientific & Technical Instruments,317.62,329.5
+MEI,"Methode Electronics, Inc.",NYQ,Technology,Electronic Components,11.63,12.46
+MCHP,Microchip Technology Incorporat,NMS,Technology,Semiconductors,91.52,95.33
+MANH,"Manhattan Associates, Inc.",NMS,Technology,Software - Application,161.12,153.61
+LYTS,LSI Industries Inc.,NMS,Technology,Electronic Components,24.1,24.055
+LYFT,"Lyft, Inc.",NMS,Technology,Software - Application,14.86,14.205
+LSPD,Lightspeed Commerce Inc. Subord,NYQ,Technology,Software - Application,9.89,9.54
+LSCC,Lattice Semiconductor Corporati,NMS,Technology,Semiconductors,144.74,150.11
+LRCX,Lam Research Corporation,NMS,Technology,Semiconductor Equipment & Materials,317.12,329.85
+LPL,"LG Display Co, Ltd AMERICAN DEP",NYQ,Technology,Consumer Electronics,5.51,5.675
+LOGI,Logitech International S.A. - R,NMS,Technology,Computer Hardware,126.67,127.56
+LIF,"Life360, Inc.",NMS,Technology,Software - Application,48.14,46.5
+LFUS,"Littelfuse, Inc.",NMS,Technology,Electronic Components,463.46,487.43
+LDOS,"Leidos Holdings, Inc.",NYQ,Technology,Information Technology Services,127.72,125.66
+LASR,"nLIGHT, Inc.",NMS,Technology,Semiconductors,70.58,76.02
+KVYO,"Klaviyo, Inc. Series A",NYQ,Technology,Software - Application,18.36,16.68
+KSPI,Joint Stock Company Kaspi.kz - ,NMS,Technology,Software - Infrastructure,90.17,89.53
+KN,Knowles Corporation,NYQ,Technology,Electronic Components,37.81,39.3
+KLIC,"Kulicke and Soffa Industries, I",NMS,Technology,Semiconductor Equipment & Materials,103.34,106.9
+KLAR,Klarna Group plc,NYQ,Financial Services,Credit Services,17.9,17.395
+KEYS,Keysight Technologies Inc.,NYQ,Technology,Scientific & Technical Instruments,330.0,343.88
+KD,"Kyndryl Holdings, Inc.",NYQ,Technology,Information Technology Services,12.89,12.655
+KC,Kingsoft Cloud Holdings Limited,NMS,Technology,Software - Application,13.33,13.75
+JKS,JinkoSolar Holding Company Limi,NYQ,Technology,Solar,21.85,22.22
+JKHY,"Jack Henry & Associates, Inc.",NMS,Technology,Information Technology Services,140.2,136.36
