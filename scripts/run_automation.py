@@ -18,7 +18,8 @@ import yaml
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetCalendarRequest
 
-from fin_trade_alpaca.optimize_and_buy import load_environment_for_mode, resolve_credentials
+from fin_trade_alpaca.optimize_and_buy import resolve_credentials
+from fin_trade_alpaca.env_loader import load_environment_for_mode
 
 EASTERN_TZ = ZoneInfo("America/New_York")
 
@@ -89,6 +90,17 @@ def parse_args() -> argparse.Namespace:
             "Optional allocation spend amount override for this run. "
             "Takes precedence over allocation.max_notional_per_run in YAML."
         ),
+    )
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        help="Path to env file (e.g. .env.paper) or 'none' to skip loading and use process env.",
+    )
+    parser.add_argument(
+        "--target",
+        choices=["paper", "live"],
+        default=None,
+        help="When using GitHub/Codespaces envs, choose which target credentials to expect.",
     )
     return parser.parse_args()
 
@@ -280,6 +292,8 @@ def run_allocation(
     investment_amount_override: Decimal | None,
     confirm_live: bool,
     execute_live_now: bool,
+    env_file: str | None = None,
+    target: str | None = None,
 ) -> int:
     allocation_cfg = config.get("allocation", {})
     if not allocation_cfg.get("enabled", False):
@@ -352,7 +366,8 @@ def run_allocation(
 
     cmd = [
         sys.executable,
-        "src/fin_trade_alpaca/optimize_and_buy.py",
+        "-m",
+        "fin_trade_alpaca.optimize_and_buy",
         "--mode",
         mode,
         "--run-type",
@@ -364,6 +379,10 @@ def run_allocation(
         "--min-order-notional",
         str(min_order_notional),
     ]
+    if env_file is not None:
+        cmd.extend(["--env-file", env_file])
+    if target is not None:
+        cmd.extend(["--target", target])
     if is_dry_run:
         cmd.append("--dry-run")
     else:
@@ -393,7 +412,7 @@ def main() -> int:
 
     mode = args.mode
 
-    load_environment_for_mode(mode)
+    load_environment_for_mode(mode, args.target, args.env_file)
     now_et = datetime.now(EASTERN_TZ)
     today = now_et.date()
 
@@ -427,6 +446,8 @@ def main() -> int:
             investment_amount_override,
             args.confirm_live,
             args.execute_live_now,
+            env_file=args.env_file,
+            target=args.target,
         )
 
     return 0

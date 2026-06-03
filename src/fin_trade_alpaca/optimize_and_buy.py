@@ -17,7 +17,7 @@ from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest
-from dotenv import load_dotenv
+from fin_trade_alpaca.env_loader import load_environment_for_mode
 
 EASTERN_TZ = ZoneInfo("America/New_York")
 
@@ -49,13 +49,7 @@ def require_ci_approval_for_real_orders(mode: str, dry_run: bool) -> None:
         )
 
 
-def load_environment_for_mode(mode: str) -> None:
-    # Load generic local env first, then mode-specific file with override.
-    load_dotenv(".env", override=False)
-    if mode == "paper":
-        load_dotenv(".env.paper", override=True)
-    else:
-        load_dotenv(".env.live", override=True)
+# Environment loading is delegated to `fin_trade_alpaca.env_loader.load_environment_for_mode`
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,6 +75,17 @@ def parse_args() -> argparse.Namespace:
         "--config",
         default="strategy.json",
         help="Path to strategy JSON config. Defaults to strategy.json.",
+    )
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        help="Path to env file (e.g. .env.paper) or 'none' to skip loading and use process env.",
+    )
+    parser.add_argument(
+        "--target",
+        choices=["paper", "live"],
+        default=None,
+        help="When --mode github, select which credential set to target (paper|live).",
     )
     parser.add_argument(
         "--max-notional",
@@ -365,7 +370,7 @@ def log_strategy_summary(strategy_config: dict) -> None:
 
 def main() -> int:
     args = parse_args()
-    load_environment_for_mode(args.mode)
+    load_environment_for_mode(args.mode, args.target, args.env_file)
 
     try:
         require_ci_approval_for_real_orders(args.mode, args.dry_run)

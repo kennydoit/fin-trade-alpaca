@@ -1,7 +1,8 @@
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from fin_trade_alpaca.optimize_and_buy import load_environment_for_mode, resolve_credentials
+from fin_trade_alpaca.optimize_and_buy import resolve_credentials
+from fin_trade_alpaca.env_loader import load_environment_for_mode
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce

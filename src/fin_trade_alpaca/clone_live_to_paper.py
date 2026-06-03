@@ -14,7 +14,8 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 
-from fin_trade_alpaca.optimize_and_buy import load_environment_for_mode, resolve_credentials
+from fin_trade_alpaca.optimize_and_buy import resolve_credentials
+from fin_trade_alpaca.env_loader import load_environment_for_mode
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,11 +62,22 @@ def parse_args() -> argparse.Namespace:
         default=Decimal("0.01"),
         help="Minimum order notional forwarded to optimize_and_buy.py. Defaults to 0.01.",
     )
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        help="Path to env file (e.g. .env.paper) or 'none' to skip loading and use process env.",
+    )
+    parser.add_argument(
+        "--target",
+        choices=["paper", "live"],
+        default=None,
+        help="When using GitHub/Codespaces envs, choose which target credentials to expect.",
+    )
     return parser.parse_args()
 
 
-def get_client_for_mode(mode: str) -> TradingClient:
-    load_environment_for_mode(mode)
+def get_client_for_mode(mode: str, target: str | None = None, env_file: str | None = None) -> TradingClient:
+    load_environment_for_mode(mode, target, env_file)
     creds = resolve_credentials(mode)
     return TradingClient(
         api_key=creds.api_key,
@@ -324,10 +336,14 @@ def execute_paper_clone_orders(
     live_total: Decimal,
     min_order_notional: Decimal,
     dry_run: bool,
+    env_file: str | None = None,
+    target: str | None = None,
 ) -> int:
+    # Run optimize_and_buy as a module to ensure package imports resolve correctly.
     cmd = [
         sys.executable,
-        "src/fin_trade_alpaca/optimize_and_buy.py",
+        "-m",
+        "fin_trade_alpaca.optimize_and_buy",
         "--mode",
         "paper",
         "--run-type",
@@ -339,6 +355,13 @@ def execute_paper_clone_orders(
         "--min-order-notional",
         str(min_order_notional.quantize(Decimal("0.01"), rounding=ROUND_DOWN)),
     ]
+
+    if env_file is not None:
+        cmd.extend(["--env-file", env_file])
+
+    if target is not None:
+        cmd.extend(["--target", target])
+
     if dry_run:
         cmd.append("--dry-run")
 
@@ -351,8 +374,8 @@ def main() -> int:
     args = parse_args()
 
     try:
-        paper_client = get_client_for_mode("paper")
-        live_client = get_client_for_mode("live")
+        paper_client = get_client_for_mode("paper", args.target, args.env_file)
+        live_client = get_client_for_mode("live", args.target, args.env_file)
     except Exception as ex:
         print(f"Credential/client initialization failed: {ex}")
         return 2
@@ -431,6 +454,8 @@ def main() -> int:
             live_total=live_total,
             min_order_notional=max(Decimal("0.01"), args.min_order_notional),
             dry_run=args.dry_run,
+            env_file=args.env_file,
+            target=args.target,
         )
         if rc != 0:
             print(f"Auto-execute command failed with exit code {rc}.")
