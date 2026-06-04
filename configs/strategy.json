@@ -29,4 +29,11 @@
     "min_avg_volume": 100000,
     "min_market_cap": 300000000
   }
+  ,
+  "short_term_settings": {
+    "number_of_assets": 3,
+    "asset_weights": "equal",
+    "stop_loss": -3.0,
+    "take_profit": 15.0
+  }
 }

@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
-from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest
+from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest, TakeProfitRequest, StopLossRequest
 from fin_trade_alpaca.env_loader import load_environment_for_mode
 
 EASTERN_TZ = ZoneInfo("America/New_York")
@@ -463,6 +463,92 @@ def distribute_notionals(
     return notionals
 
 
+def find_latest_screener_csv(repo_root: Path):
+    dirpath = repo_root.joinpath("reports", "screener_results")
+    if not dirpath.exists():
+        return None
+    csvs = list(dirpath.glob("*.csv"))
+    if not csvs:
+        return None
+    csvs_sorted = sorted(csvs, key=lambda p: p.stat().st_mtime, reverse=True)
+    return csvs_sorted[0]
+
+
+def pick_top_n_from_screener(csv_path: Path, n: int):
+    # prefer pct_1w then pct_1m; return list of tuples (symbol, price)
+    rows = []
+    try:
+        with csv_path.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                sym = (r.get("symbol") or "").strip().upper()
+                if not sym:
+                    continue
+                price = safe_float(r.get("regularMarketPrice") or r.get("eodprice"))
+                p1w = safe_float(r.get("pct_1w"))
+                p1m = safe_float(r.get("pct_1m"))
+                score = p1w if p1w is not None else (p1m if p1m is not None else None)
+                rows.append((sym, price, score))
+    except Exception:
+        return []
+
+    # filter out rows without score or price
+    rows = [r for r in rows if r[2] is not None and r[1] is not None]
+    if not rows:
+        return []
+    rows_sorted = sorted(rows, key=lambda x: x[2], reverse=True)
+    top = rows_sorted[:n]
+    return [(r[0], r[1]) for r in top]
+
+
+def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run: bool) -> list[str]:
+    """orders: list of dicts with keys: symbol, notional, price, stop_pct, take_pct"""
+    submitted = []
+    if not orders:
+        return submitted
+    print("Short-term order plan:")
+    for o in orders:
+        print(f"  BUY {o['symbol']}: ${o['notional']} with stop={o['stop_pct']}% take={o['take_pct']}%")
+
+    if dry_run:
+        print("Dry run enabled; no short-term orders submitted.")
+        return submitted
+
+    for o in orders:
+        symbol = o["symbol"]
+        notional = o["notional"]
+        price = o.get("price")
+        stop_pct = float(o.get("stop_pct", 0.0))
+        take_pct = float(o.get("take_pct", 0.0))
+        take_price = None
+        stop_price = None
+        try:
+            if price is not None:
+                take_price = float(price) * (1.0 + take_pct / 100.0)
+                stop_price = float(price) * (1.0 + stop_pct / 100.0)
+
+            tp = TakeProfitRequest(limit_price=take_price) if take_price is not None else None
+            sl = StopLossRequest(stop_price=stop_price) if stop_price is not None else None
+
+            req = MarketOrderRequest(
+                symbol=symbol,
+                notional=float(notional),
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.DAY,
+                take_profit=tp,
+                stop_loss=sl,
+            )
+            order = client.submit_order(req)
+            submitted.append(order.id)
+            print(f"Submitted short-term {symbol} order id={order.id} notional=${notional}")
+        except APIError as ex:
+            print(f"Short-term order failed for {symbol}: {ex}")
+        except Exception as ex:
+            print(f"Short-term order unexpected error for {symbol}: {ex}")
+
+    return submitted
+
+
 def submit_orders(
     client: TradingClient,
     notionals: Dict[str, Decimal],
@@ -653,6 +739,45 @@ def main() -> int:
     if spendable_cash <= Decimal("0"):
         print("No spendable cash available. Exiting.")
         return 0
+
+    # Handle short-term allocation (use screener results)
+    short_cfg = strategy_config.get("short_term_settings", {})
+    short_weight = Decimal(str(strategy_config.get("buckets", {}).get("short_term", {}).get("weight", 0)))
+    short_order_ids: list[str] = []
+    if short_weight > 0 and short_cfg and short_cfg.get("number_of_assets", 0) > 0:
+        repo_root = Path(__file__).resolve().parents[2]
+        latest = find_latest_screener_csv(repo_root)
+        if latest is None:
+            print("Short-term requested but no screener CSV found in reports/screener_results. Skipping short-term allocation.")
+        else:
+            n = int(short_cfg.get("number_of_assets", 3))
+            picks = pick_top_n_from_screener(latest, n)
+            if not picks:
+                print(f"No valid picks found in screener {latest}. Skipping short-term allocation.")
+            else:
+                short_alloc = (spendable_cash * short_weight).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                per_asset = (short_alloc / Decimal(str(len(picks)))).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                orders = []
+                for sym, price in picks:
+                    orders.append({
+                        "symbol": sym,
+                        "notional": per_asset,
+                        "price": price,
+                        "stop_pct": float(short_cfg.get("stop_loss", -3.0)),
+                        "take_pct": float(short_cfg.get("take_profit", 15.0)),
+                    })
+
+                if short_alloc <= Decimal("0"):
+                    print("Short-term allocation computed as $0. Skipping short-term orders.")
+                else:
+                    print(f"Allocating ${short_alloc} to short-term picks ({len(picks)} assets)")
+                    if client is None and not args.dry_run:
+                        print("No Alpaca client available to submit short-term orders. Use --simulate-cash or provide credentials.")
+                        return 2
+                    short_order_ids = submit_short_term_orders(client, orders, args.dry_run)
+                    # reduce spendable cash for the remaining allocations
+                    spent = sum(Decimal(str(o["notional"])) for o in orders)
+                    spendable_cash = (spendable_cash - spent).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
     symbol_weights = flatten_symbol_weights(strategy_config)
     if not symbol_weights:
