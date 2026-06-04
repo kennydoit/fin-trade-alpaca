@@ -403,13 +403,13 @@ def apply_dynamic_tilt(strategy_config: dict, symbol_weights: Dict[str, Decimal]
     return new_weights, report
 
 
-def write_tilt_report(report_rows, today: date):
+def write_tilt_report(report_rows, today: date, mode: str):
     if not report_rows:
         return None
     repo_root = Path(__file__).resolve().parents[2]
     out_dir = repo_root.joinpath("reports", "tilt_reports")
     out_dir.mkdir(parents=True, exist_ok=True)
-    fname = f"tilt_report_{today.strftime('%Y%m%d')}.txt"
+    fname = f"tilt_report_{mode}_{today.strftime('%Y%m%d')}.txt"
     out_path = out_dir.joinpath(fname)
 
     # prepare text table
@@ -665,7 +665,7 @@ def main() -> int:
         try:
             new_weights, report_rows = apply_dynamic_tilt(strategy_config, symbol_weights, tilt_cfg, spendable_cash)
             if report_rows:
-                tilt_report_path = write_tilt_report(report_rows, today_et)
+                tilt_report_path = write_tilt_report(report_rows, today_et, args.mode)
                 print(f"Wrote tilt report to {tilt_report_path}")
             symbol_weights = new_weights
         except Exception as ex:

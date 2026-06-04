@@ -21,10 +21,10 @@
   ,
   "dynamic_tilt": {
     "enabled": true,
-    "basis": "pct_1m",
-    "alpha": 0.10,
+    "basis": "pct_1w",
+    "alpha": 0.40,
     "clip": [-50, 200],
-    "cap_per_asset": 0.10,
+    "cap_per_asset": 0.25,
     "frequency": "weekly",
     "min_avg_volume": 100000,
     "min_market_cap": 300000000
