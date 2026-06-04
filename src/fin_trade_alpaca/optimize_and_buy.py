@@ -409,14 +409,40 @@ def write_tilt_report(report_rows, today: date):
     repo_root = Path(__file__).resolve().parents[2]
     out_dir = repo_root.joinpath("reports", "tilt_reports")
     out_dir.mkdir(parents=True, exist_ok=True)
-    fname = f"tilt_report_{today.strftime('%Y%m%d')}.csv"
+    fname = f"tilt_report_{today.strftime('%Y%m%d')}.txt"
     out_path = out_dir.joinpath(fname)
-    headers = ["symbol", "original_weight", "tilt_weight", "original_investment", "tilt_investment", "metric"]
-    with out_path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=headers)
-        w.writeheader()
-        for r in report_rows:
-            w.writerow(r)
+
+    # prepare text table
+    cols = ["symbol", "original_weight", "tilt_weight", "original_investment", "tilt_investment", "metric"]
+    # compute string values and column widths
+    rows_str = []
+    col_widths = {c: len(c) for c in cols}
+    for r in report_rows:
+        row = {
+            "symbol": str(r.get("symbol") or ""),
+            "original_weight": f"{r.get('original_weight'):.7f}" if r.get("original_weight") is not None else "",
+            "tilt_weight": f"{r.get('tilt_weight'):.7f}" if r.get("tilt_weight") is not None else "",
+            "original_investment": str(r.get("original_investment") or ""),
+            "tilt_investment": str(r.get("tilt_investment") or ""),
+            "metric": f"{r.get('metric'):.4f}" if r.get("metric") is not None else "",
+        }
+        for k, v in row.items():
+            col_widths[k] = max(col_widths[k], len(v))
+        rows_str.append(row)
+
+    # build table lines
+    sep = " | "
+    header = sep.join(c.ljust(col_widths[c]) for c in cols)
+    divider = "-+-".join("-" * col_widths[c] for c in cols)
+    lines = [header, divider]
+    for row in rows_str:
+        line = sep.join(row[c].ljust(col_widths[c]) for c in cols)
+        lines.append(line)
+
+    # write to file
+    with out_path.open("w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
     return out_path
 
 
@@ -484,29 +510,60 @@ def poll_orders_for_fills(client: TradingClient, order_ids: list[str], timeout_s
     pending = set(order_ids)
     final_status: dict = {}
 
+    def _find_order_by_id(oid: str):
+        # Try common SDK entrypoints in order of preference, falling back to list-and-find.
+        try:
+            return client.get_order(oid)
+        except Exception:
+            pass
+
+        try:
+            orders = client.get_orders()
+            return next((x for x in orders if getattr(x, "id", None) == oid), None)
+        except Exception:
+            pass
+
+        try:
+            orders = client.get_all_orders()
+            return next((x for x in orders if getattr(x, "id", None) == oid), None)
+        except Exception:
+            pass
+
+        return None
+
+    def _status_name_from_order(o) -> str:
+        if o is None:
+            return "unknown"
+        st = getattr(o, "status", None)
+        if st is None:
+            return "unknown"
+        if hasattr(st, "name"):
+            return str(st.name).lower()
+        return str(st).lower()
+
     print(f"Polling for fills for {len(order_ids)} orders, timeout={timeout_sec}s")
     while pending and time.time() < deadline:
         for oid in list(pending):
             try:
-                order = client.get_order(oid)
-                status = getattr(order, "status", "unknown")
+                o = _find_order_by_id(oid)
+                status = _status_name_from_order(o)
             except Exception as ex:
                 status = f"error:{ex}"
 
             print(f"  order {oid} status={status}")
 
-            if status == "filled" or status == "canceled" or status == "rejected":
+            if status in ("filled", "canceled", "rejected", "expired"):
                 final_status[oid] = status
                 pending.remove(oid)
 
         if pending:
             time.sleep(max(1, poll_interval))
 
-    # mark any still-pending orders with their last-observed status
+    # For any remaining pending orders, attempt one last time to capture a status
     for oid in pending:
         try:
-            order = client.get_order(oid)
-            final_status[oid] = getattr(order, "status", "unknown")
+            o = _find_order_by_id(oid)
+            final_status[oid] = _status_name_from_order(o)
         except Exception:
             final_status[oid] = "unknown"
 
