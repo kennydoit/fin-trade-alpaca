@@ -6,6 +6,8 @@ import json
 import os
 import sys
 import time
+import csv
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_DOWN
@@ -92,6 +94,12 @@ def parse_args() -> argparse.Namespace:
         type=Decimal,
         default=None,
         help="Optional spend cap for this run. If omitted, uses all available cash.",
+    )
+    parser.add_argument(
+        "--simulate-cash",
+        type=Decimal,
+        default=None,
+        help="If set, skip Alpaca account lookup and simulate available cash with this value.",
     )
     parser.add_argument(
         "--min-order-notional",
@@ -253,6 +261,165 @@ def flatten_symbol_weights(strategy_config: dict) -> Dict[str, Decimal]:
     return symbol_weights
 
 
+def safe_float(x):
+    try:
+        if x is None or x == "":
+            return None
+        return float(str(x).replace(",", ""))
+    except Exception:
+        return None
+
+
+def compute_momentum_for_symbols(symbols, basis="pct_1m", clip=(-50, 200)):
+    """Return a dict symbol->pct (percent) for the given basis (supports pct_1m or pct_1w)."""
+    try:
+        import yfinance as yf
+    except Exception:
+        print("yfinance not available; skipping dynamic tilt.")
+        return {s: None for s in symbols}
+
+    metrics = {}
+    for sym in symbols:
+        try:
+            t = yf.Ticker(sym)
+            period = "1mo" if basis == "pct_1m" else "7d"
+            hist = None
+            try:
+                hist = t.history(period=period, interval="1d", actions=False)
+            except Exception:
+                hist = None
+            pct = None
+            if hist is not None and len(hist) > 0:
+                closes = list(hist["Close"].dropna())
+                if len(closes) >= 2:
+                    first = safe_float(closes[0])
+                    last = safe_float(closes[-1])
+                    if first is not None and first != 0:
+                        pct = (last - first) / first * 100.0
+            # fallback: try info fields
+            if pct is None:
+                info = {}
+                try:
+                    info = t.info or {}
+                except Exception:
+                    info = {}
+                if basis == "pct_1m":
+                    pct = safe_float(info.get("monthChangePercent") or info.get("regularMarketChangePercent"))
+                else:
+                    pct = safe_float(info.get("weekChangePercent") or info.get("regularMarketChangePercent"))
+
+            if pct is not None:
+                lo, hi = clip
+                pct = max(lo, min(hi, pct))
+            metrics[sym] = pct
+        except Exception:
+            metrics[sym] = None
+
+    return metrics
+
+
+def apply_dynamic_tilt(strategy_config: dict, symbol_weights: Dict[str, Decimal], tilt_cfg: dict, spendable_cash: Decimal):
+    """Apply dynamic tilt across combined core+growth assets and return new symbol_weights and a report list."""
+    # collect symbols from core and growth
+    buckets = strategy_config.get("buckets", {})
+    combined = []
+    for name in ("core", "growth"):
+        assets = buckets.get(name, {}).get("assets", {})
+        for s in assets.keys():
+            combined.append(s.strip().upper())
+
+    combined = sorted(set(combined))
+    if not combined:
+        return symbol_weights, []
+
+    basis = tilt_cfg.get("basis", "pct_1m")
+    alpha = float(tilt_cfg.get("alpha", 0.10))
+    clip = tuple(tilt_cfg.get("clip", [-50, 200]))
+    cap = float(tilt_cfg.get("cap_per_asset", 0.10))
+
+    # compute momentum
+    metrics = compute_momentum_for_symbols(combined, basis=basis, clip=clip)
+
+    # build base weights for combined set
+    base_weights = {s: float(symbol_weights.get(s, Decimal("0"))) for s in combined}
+    combined_total = sum(base_weights.values())
+    if combined_total <= 0:
+        return symbol_weights, []
+
+    # invert momentum: lower pct -> higher priority
+    inv = {}
+    for s in combined:
+        m = metrics.get(s)
+        if m is None:
+            inv[s] = 0.0
+        else:
+            inv[s] = -float(m)
+
+    min_inv = min(inv.values())
+    pvals = {s: inv[s] - min_inv for s in combined}
+    total_p = sum(pvals.values())
+    if total_p == 0:
+        norm = {s: 1.0 / len(combined) for s in combined}
+    else:
+        norm = {s: (pvals[s] / total_p) for s in combined}
+
+    # tilt multipliers
+    tf = {}
+    for s in combined:
+        tf_val = 1.0 + alpha * norm[s]
+        # cap multiplier to [1-cap, 1+cap]
+        tf_val = max(1.0 - cap, min(1.0 + cap, tf_val))
+        tf[s] = tf_val
+
+    # apply multipliers to base weights and renormalize to combined_total
+    tilted = {s: base_weights[s] * tf[s] for s in combined}
+    tilted_sum = sum(tilted.values())
+    if tilted_sum == 0:
+        # fallback to base
+        new_weights = dict(symbol_weights)
+        report = []
+        for s in combined:
+            report.append((s, base_weights[s], base_weights[s], metrics.get(s)))
+        return new_weights, report
+
+    scale = combined_total / tilted_sum
+    new_weights = dict(symbol_weights)
+    report = []
+    for s in combined:
+        new_w = Decimal(str(tilted[s] * scale)).quantize(Decimal("0.0000001"))
+        orig_w = Decimal(str(base_weights[s]))
+        new_weights[s] = new_w
+        orig_invest = (spendable_cash * orig_w).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        new_invest = (spendable_cash * new_w).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        report.append({
+            "symbol": s,
+            "original_weight": float(orig_w),
+            "tilt_weight": float(new_w),
+            "original_investment": f"{orig_invest}",
+            "tilt_investment": f"{new_invest}",
+            "metric": metrics.get(s),
+        })
+
+    return new_weights, report
+
+
+def write_tilt_report(report_rows, today: date):
+    if not report_rows:
+        return None
+    repo_root = Path(__file__).resolve().parents[2]
+    out_dir = repo_root.joinpath("reports", "tilt_reports")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"tilt_report_{today.strftime('%Y%m%d')}.csv"
+    out_path = out_dir.joinpath(fname)
+    headers = ["symbol", "original_weight", "tilt_weight", "original_investment", "tilt_investment", "metric"]
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=headers)
+        w.writeheader()
+        for r in report_rows:
+            w.writerow(r)
+    return out_path
+
+
 def distribute_notionals(
     spendable_cash: Decimal,
     symbol_weights: Dict[str, Decimal],
@@ -382,23 +549,28 @@ def main() -> int:
         print("Live mode requires --confirm-live unless --dry-run is set.")
         return 2
 
-    try:
-        creds = resolve_credentials(args.mode)
-        client = TradingClient(
-            api_key=creds.api_key,
-            secret_key=creds.api_secret,
-            oauth_token=creds.oauth_token,
-            paper=creds.paper,
-        )
-    except ValueError as ex:
-        print(str(ex))
-        return 2
+    client = None
+    if args.simulate_cash is None:
+        try:
+            creds = resolve_credentials(args.mode)
+            client = TradingClient(
+                api_key=creds.api_key,
+                secret_key=creds.api_secret,
+                oauth_token=creds.oauth_token,
+                paper=creds.paper,
+            )
+        except ValueError as ex:
+            print(str(ex))
+            return 2
 
     now_et = datetime.now(EASTERN_TZ)
     today_et = now_et.date()
     print(f"Run mode={args.mode} run_type={args.run_type} date_et={today_et.isoformat()}")
 
     if args.run_type == "scheduled":
+        if client is None:
+            print("Scheduled run requires Alpaca client; provide credentials or remove --run-type scheduled.")
+            return 2
         run_today, reason = should_run_today(client, today_et)
         print(reason)
         if not run_today:
@@ -412,8 +584,12 @@ def main() -> int:
 
     log_strategy_summary(strategy_config)
 
-    account = client.get_account()
-    available_cash = Decimal(str(account.cash)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    if args.simulate_cash is not None:
+        available_cash = Decimal(str(args.simulate_cash)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        print(f"Simulating account cash=${available_cash}")
+    else:
+        account = client.get_account()
+        available_cash = Decimal(str(account.cash)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
     spendable_cash = choose_spendable_cash(available_cash, args.max_notional)
 
     print(f"Account cash=${available_cash}; spendable cash this run=${spendable_cash}")
@@ -425,6 +601,18 @@ def main() -> int:
     if not symbol_weights:
         print("No tradable symbols configured. Exiting.")
         return 0
+    # Optionally apply dynamic tilt across core+growth assets
+    tilt_cfg = strategy_config.get("dynamic_tilt") or {}
+    tilt_report_path = None
+    if tilt_cfg.get("enabled"):
+        try:
+            new_weights, report_rows = apply_dynamic_tilt(strategy_config, symbol_weights, tilt_cfg, spendable_cash)
+            if report_rows:
+                tilt_report_path = write_tilt_report(report_rows, today_et)
+                print(f"Wrote tilt report to {tilt_report_path}")
+            symbol_weights = new_weights
+        except Exception as ex:
+            print(f"Dynamic tilt failed: {ex}. Continuing with base weights.")
 
     notionals = distribute_notionals(spendable_cash, symbol_weights, args.min_order_notional)
     order_ids = submit_orders(client, notionals, args.dry_run)

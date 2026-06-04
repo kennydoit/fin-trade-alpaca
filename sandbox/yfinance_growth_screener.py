@@ -331,7 +331,10 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=200, help="number of candidates to fetch (default 200)")
     p.add_argument("--sector", default=None, help="sector filter to pass to the screener (e.g., Technology)")
-    p.add_argument("--out", default="sandbox/yfinance_screener_results_with_metrics.csv")
+    # default to repository-level reports/screener_results folder
+    repo_root = Path(__file__).resolve().parents[1]
+    default_reports = repo_root.joinpath("reports", "screener_results", "yfinance_screener_results_with_metrics.csv")
+    p.add_argument("--out", default=str(default_reports))
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--pause", type=float, default=0.0, help="pause (s) between metric fetches to be gentle")
     p.add_argument("--max-eod-price", type=float, default=None, help="filter candidates to eodprice < value")

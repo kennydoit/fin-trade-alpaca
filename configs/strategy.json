@@ -18,4 +18,15 @@
       "assets": {}
     }
   }
+  ,
+  "dynamic_tilt": {
+    "enabled": true,
+    "basis": "pct_1m",
+    "alpha": 0.10,
+    "clip": [-50, 200],
+    "cap_per_asset": 0.10,
+    "frequency": "weekly",
+    "min_avg_volume": 100000,
+    "min_market_cap": 300000000
+  }
 }

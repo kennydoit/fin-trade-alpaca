@@ -316,9 +316,13 @@ def save_results_csv(results: List[Dict[str, Any]], filename: Optional[str] = No
 
     Returns the path to the written file.
     """
+    # default to repository-level reports/screener_results folder
+    repo_root = Path(__file__).resolve().parents[1]
+    reports_dir = repo_root.joinpath("reports", "screener_results")
+    reports_dir.mkdir(parents=True, exist_ok=True)
     if filename is None:
         filename = "yfinance_screener_results.csv"
-    out_path = Path(__file__).parent.joinpath(filename)
+    out_path = reports_dir.joinpath(filename)
 
     headers = ["symbol", "shortName", "exchange", "sector", "industry", "eodprice", "regularMarketPrice"]
     with out_path.open("w", newline="", encoding="utf-8") as f:
