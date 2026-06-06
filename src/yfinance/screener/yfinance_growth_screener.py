@@ -1,13 +1,10 @@
-"""yfinance_growth_screener.py
+"""Growth screener moved into package `yfinance.screener`.
 
-Compute short-term growth and momentum metrics for candidates produced by the
-existing `yfinance_equity_screener.screen_equities()` function.
+This is largely the same as the sandbox script but imports the local
+screener implementation via a relative import.
 
-Outputs a CSV with the original fields plus computed metrics:
-- pct_1w, pct_1m, rel_volume, revenueGrowth, earningsQuarterlyGrowth, pegRatio, trailingPE
-
-This script is designed to be run as a separate tool; defaults perform a small
-smoke test (limit=20). Use `--limit` to increase.
+See the screener README for run instructions and troubleshooting:
+src/yfinance/screener/README.md
 """
 from __future__ import annotations
 
@@ -24,10 +21,15 @@ from typing import Dict, List, Optional, Any
 def get_candidates(limit: int = 200, **kwargs) -> List[Dict[str, Any]]:
     """Return candidate symbols by reusing the existing screener."""
     try:
-        from sandbox.yfinance_equity_screener import screen_equities
+        from .yfinance_equity_screener import screen_equities
     except Exception:
-        # fallback import path if running as package
-        from yfinance_equity_screener import screen_equities  # type: ignore
+        try:
+            from yfinance.screener.yfinance_equity_screener import screen_equities
+        except Exception:
+            try:
+                from sandbox.yfinance_equity_screener import screen_equities
+            except Exception:
+                raise
 
     return screen_equities(limit=limit, **kwargs)
 
@@ -45,10 +47,6 @@ def safe_float(x: Any) -> Optional[float]:
 
 
 def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
-    """Fetch info/history for a symbol and compute metrics.
-
-    Returns a dict of metrics (keys may be None when unavailable).
-    """
     import yfinance as yf
 
     metrics: Dict[str, Any] = {
@@ -60,7 +58,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
         "earningsQuarterlyGrowth": None,
         "pegRatio": None,
         "trailingPE": None,
-        # additional summaries
         "rec_latest": None,
         "rec_buy_count": None,
         "rec_hold_count": None,
@@ -76,25 +73,19 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
     except Exception:
         return metrics
 
-    # fetch info
     info = {}
     try:
         info = t.info or {}
     except Exception:
         info = {}
 
-    # trailingPE and peg if present
     metrics["trailingPE"] = safe_float(info.get("trailingPE") or info.get("trailingPERaw"))
     metrics["pegRatio"] = safe_float(info.get("pegRatio") or info.get("peg"))
-
-    # revenue/earnings growth
     metrics["revenueGrowth"] = safe_float(info.get("revenueGrowth"))
     metrics["earningsQuarterlyGrowth"] = safe_float(info.get("earningsQuarterlyGrowth"))
 
-    # relative volume: latest volume / averageDailyVolume3Month
     avg_vol = safe_float(info.get("averageDailyVolume3Month") or info.get("averageDailyVolume"))
 
-    # history for momentum and latest volume
     hist = None
     try:
         hist = t.history(period="1mo", interval="1d", actions=False)
@@ -105,7 +96,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
         closes = list(hist["Close"].dropna())
         vols = list(hist["Volume"].dropna())
         if closes:
-            # pct_1m: from first to last in the 1 month window
             try:
                 first = float(closes[0])
                 last = float(closes[-1])
@@ -114,7 +104,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
             except Exception:
                 metrics["pct_1m"] = None
 
-            # pct_1w: use last 5 trading days if available
             try:
                 if len(closes) >= 5:
                     first_w = float(closes[-5])
@@ -122,7 +111,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
                     if first_w and not math.isclose(first_w, 0.0):
                         metrics["pct_1w"] = (last - first_w) / first_w * 100.0
                 else:
-                    # fallback to earliest available within month
                     first_w = float(closes[0])
                     last = float(closes[-1])
                     if first_w and not math.isclose(first_w, 0.0):
@@ -130,7 +118,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
             except Exception:
                 metrics["pct_1w"] = None
 
-        # latest volume
         try:
             latest_vol = int(vols[-1]) if vols else None
         except Exception:
@@ -139,33 +126,27 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
         if latest_vol is not None and avg_vol is not None and avg_vol != 0:
             metrics["rel_volume"] = latest_vol / avg_vol
     else:
-        # no history: try to get regularMarketVolume from info
         latest_vol = safe_float(info.get("regularMarketVolume") or info.get("volume"))
         if latest_vol is not None and avg_vol is not None and avg_vol != 0:
             metrics["rel_volume"] = latest_vol / avg_vol
 
-    # compute peg if missing and possible: PEG = PE / (earnings_growth_percent)
     if metrics.get("pegRatio") is None:
         pe = metrics.get("trailingPE")
         eg = metrics.get("earningsQuarterlyGrowth")
         if pe is not None and eg is not None and eg > 0:
-            # earningsQuarterlyGrowth is a decimal (e.g., 0.2 for 20%) — convert to percent
             try:
                 metrics["pegRatio"] = float(pe) / (float(eg) * 100.0)
             except Exception:
                 metrics["pegRatio"] = None
 
-    # --- recommendations summary ---
     try:
         rec_df = None
-        # yfinance exposes recommendations as attribute or via method
         if hasattr(t, "get_recommendations_summary"):
             try:
                 rec_df = t.get_recommendations_summary()
             except Exception:
                 rec_df = None
         if rec_df is None:
-            # try recommendations attribute or callable
             attr = getattr(t, "recommendations", None)
             if callable(attr):
                 try:
@@ -176,12 +157,9 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
                 rec_df = attr
 
         if rec_df is not None:
-            # try to find a text column with Buy/Hold/Sell values
             if hasattr(rec_df, "empty") and not rec_df.empty:
-                # pick a candidate column
                 text_col = None
                 for c in rec_df.columns:
-                    # sample first non-null
                     sample = rec_df[c].dropna().astype(str)
                     if not sample.empty:
                         s0 = sample.iloc[-1].lower()
@@ -189,7 +167,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
                             text_col = c
                             break
                 if text_col is None:
-                    # fallback to first column
                     text_col = rec_df.columns[0]
 
                 vals = rec_df[text_col].astype(str).str.lower()
@@ -200,7 +177,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # --- eps trend ---
     try:
         eps_df = None
         if hasattr(t, "get_eps_trend"):
@@ -211,17 +187,14 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
         if eps_df is None:
             eps_df = getattr(t, "eps_trend", None) or getattr(t, "earnings_trend", None)
         if eps_df is not None and hasattr(eps_df, "empty") and not eps_df.empty:
-            # summarize by taking last row as dict
             try:
                 last = eps_df.dropna(how="all").iloc[-1].to_dict()
-                # compact summary as key=val pairs
                 metrics["eps_trend_summary"] = ";".join(f"{k}={v}" for k, v in last.items())
             except Exception:
                 metrics["eps_trend_summary"] = None
     except Exception:
         pass
 
-    # --- insider transactions ---
     try:
         ins_df = None
         if hasattr(t, "get_insider_transactions"):
@@ -232,13 +205,11 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
         if ins_df is None:
             ins_df = getattr(t, "insider_transactions", None)
         if ins_df is not None and hasattr(ins_df, "empty") and not ins_df.empty:
-            # try to parse shares and type
             buys = 0
             sells = 0
             cnt = 0
             for _, row in ins_df.iterrows():
                 cnt += 1
-                # shares may be in 'shares' or 'transactionShares'
                 s = None
                 for k in ("shares", "transactionShares", "qty"):
                     if k in ins_df.columns:
@@ -247,7 +218,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
                             break
                         except Exception:
                             s = None
-                # type may be in 'type' or 'transaction'
                 typ = None
                 for k in ("type", "transaction", "insiderTitle"):
                     if k in ins_df.columns:
@@ -271,10 +241,6 @@ def compute_metrics_for_symbol(symbol: str) -> Dict[str, Any]:
 
 
 def compute_metrics(symbols: List[str], workers: int = 6, pause: float = 0.0) -> List[Dict[str, Any]]:
-    """Compute metrics for a list of symbols in parallel.
-
-    `pause` is a small sleep between scheduling jobs to be gentle on the API.
-    """
     results: List[Dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {ex.submit(compute_metrics_for_symbol, s): s for s in symbols}
@@ -291,8 +257,6 @@ def compute_metrics(symbols: List[str], workers: int = 6, pause: float = 0.0) ->
 
 
 def write_combined_csv(original_rows: List[Dict[str, Any]], metrics_list: List[Dict[str, Any]], out_file: Path) -> Path:
-    """Merge original rows (from screener) with computed metrics and write CSV."""
-    # map metrics by symbol
     metrics_by_symbol = {m.get("symbol"): m for m in metrics_list}
 
     headers_base = ["symbol", "shortName", "exchange", "sector", "industry", "eodprice", "regularMarketPrice"]
@@ -318,7 +282,6 @@ def write_combined_csv(original_rows: List[Dict[str, Any]], metrics_list: List[D
                 if v is None:
                     metric_vals.append("")
                 else:
-                    # format floats
                     if isinstance(v, float):
                         metric_vals.append(f"{v:.4f}")
                     else:
@@ -332,8 +295,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=200, help="number of candidates to fetch (default 200)")
     p.add_argument("--sector", default=None, help="sector filter to pass to the screener (e.g., Technology)")
-    # default to repository-level reports/screener_results folder
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     default_reports = repo_root.joinpath("reports", "screener_results", "yfinance_screener_results_with_metrics.csv")
     p.add_argument("--out", default=str(default_reports))
     p.add_argument("--workers", type=int, default=6)
@@ -342,7 +304,6 @@ def main():
     p.add_argument("--candidates-file", default=None, help="path to existing candidates CSV to use instead of running screener")
     args = p.parse_args()
 
-    # fetch candidates using existing screener or from provided CSV
     candidates = []
     if args.candidates_file:
         cf = Path(args.candidates_file)
@@ -358,16 +319,21 @@ def main():
     if not candidates:
         print(f"Fetching up to {args.limit} candidates from screener...")
         candidates = get_candidates(limit=args.limit, sector=args.sector)
-    # attempt to enrich base metadata (sector, industry, eodprice) if available
+
     try:
-        from sandbox.yfinance_equity_screener import enrich_results_with_info
+        from .yfinance_equity_screener import enrich_results_with_info
         candidates = enrich_results_with_info(candidates)
     except Exception:
         try:
-            from yfinance_equity_screener import enrich_results_with_info  # type: ignore
+            from sandbox.yfinance_equity_screener import enrich_results_with_info
             candidates = enrich_results_with_info(candidates)
         except Exception:
-            pass
+            try:
+                from yfinance_equity_screener import enrich_results_with_info  # type: ignore
+                candidates = enrich_results_with_info(candidates)
+            except Exception:
+                pass
+
     symbols = []
     for r in candidates:
         if isinstance(r, dict):
@@ -375,7 +341,6 @@ def main():
             if sym:
                 symbols.append(sym)
 
-    # optional filter by eodprice (after enrichment)
     if args.max_eod_price is not None:
         def _eod_ok(row):
             try:

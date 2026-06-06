@@ -92,14 +92,9 @@ Or run both steps in one command (recommended for minimal slippage):
 python src/fin_trade_alpaca/clone_live_to_paper.py --auto-execute-paper
 ```
 
-This command:
-- Sells all current paper positions.
 - Reads live positions and their market values.
 	- Writes `configs/paper_clone_strategy.json` using the same schema as `strategy.json`.
 
-When `--auto-execute-paper` is set, it immediately calls `optimize_and_buy.py` in paper mode using:
-- `--config configs/paper_clone_strategy.json`
-- `--max-notional <live total market value>`
 - `--min-order-notional 0.01` (or your override)
 
 Step 2: execute buys in paper using the generated strategy
@@ -108,33 +103,19 @@ Step 2: execute buys in paper using the generated strategy
 python src/fin_trade_alpaca/optimize_and_buy.py --mode paper --run-type adhoc --config configs/paper_clone_strategy.json --min-order-notional 0.01
 ```
 
-Notes:
-- This flow mirrors dollar values, not share counts.
-- Exact mirroring requires paper cash (after liquidation) to be at least live long-position market value.
 - If paper cash is lower than live total, `clone_live_to_paper.py` exits with a shortfall message.
 
 ## GitHub Actions
 
 Workflow file: `.github/workflows/alpaca-allocation.yml`
 
-Behavior:
-- Daily schedule at `30 14 * * *` (10:30 AM Eastern during standard offset windows).
 - On scheduled runs, defaults to:
 	- `mode=paper`
 	- `run_type=scheduled`
-	- `dry_run=false`
 - Manual `workflow_dispatch` allows selecting mode, run type, dry run, and max notional.
 
-Required GitHub Secrets:
-- `ALPACA_PAPER_API_KEY`
-- `ALPACA_PAPER_API_SECRET`
-- `ALPACA_LIVE_API_KEY`
 - `ALPACA_LIVE_API_SECRET`
 
-Public-repo hardening (recommended):
-- Create a GitHub Environment named `alpaca-trading`.
-- Store these values as Environment Secrets (instead of plain repo secrets).
-- Add required reviewers for the environment before any workflow can access secrets.
 - Restrict which branches can deploy to the environment.
 
 Example using GitHub CLI:
@@ -145,9 +126,6 @@ gh secret set ALPACA_LIVE_API_KEY --env alpaca-trading
 gh secret set ALPACA_LIVE_API_SECRET --env alpaca-trading
 ```
 
-Additional CI approval secrets (default deny for real money actions):
-- `ALLOW_BROKER_FUNDING` -> set to `true` only when ACH funding should be allowed
-- `ALLOW_REAL_ORDERS` -> set to `true` only when non-dry-run orders should be allowed
 - `ALLOW_LIVE_TRADING` -> set to `true` only when live account orders should be allowed
 
 ```bash
@@ -156,61 +134,29 @@ gh secret set ALLOW_REAL_ORDERS --env alpaca-trading
 gh secret set ALLOW_LIVE_TRADING --env alpaca-trading
 ```
 
-Security checks enabled in this repo:
-- Workflows run with minimum token permission: `contents: read`
-- Sensitive environment variables are scoped to execution steps only
-- Non-dry-run funding/orders in CI are blocked unless approval secrets are set to `true`
-- Live orders in CI require both `ALLOW_REAL_ORDERS=true` and `ALLOW_LIVE_TRADING=true`
 - Automatic secret scanning on push/PR via `.github/workflows/secret-scan.yml`
 
 ## Files Added
-
-- `optimize_and_buy.py`: main allocation engine.
-- `strategy.example.json`: starter strategy template.
-- `strategy.json`: active strategy config.
 - `.github/workflows/alpaca-allocation.yml`: scheduled and manual automation.
 
 ## YAML Automation (Funding + Allocation)
 
 This repository now supports a YAML-driven orchestrator in `scripts/run_automation.py`.
 
-Primary files:
-- `configs/automation.yaml`: active settings.
-- `configs/automation.example.yaml`: template.
 - `.github/workflows/alpaca-automation.yml`: scheduled and manual workflow.
 
 ### YAML fields
 
-`trading`
-- `mode`: `paper` or `live`
 - `strategy_file`: allocation strategy JSON file
 
-`funding`
-- `enabled`: true/false
-- `provider`: currently `alpaca_broker`
-- `schedule`: list such as `[15, last_day]` or `[immediate]`
-- `amount`: ACH transfer amount
-- `dry_run`: if true, prints transfer payload and does not submit
 - `require_market_open`: if true, skips on market-closed days
 
-`allocation`
-- `enabled`: true/false
-- `schedule`: list such as `[15, last_day]` or `[immediate]`
-- `require_market_open`: if true, skips on market-closed days
-- `min_new_cash`: minimum spendable cash required to place orders
-- `reserve_cash`: cash buffer kept in account
-- `max_notional_per_run`: cap on dollars invested each run
-- `min_order_notional`: minimum per-order dollar size
 - `dry_run`: if true, does not place allocation orders
 
 ### ACH transfer prerequisites
 
 ACH transfer submission in this repo targets Alpaca Broker transfer endpoints.
 
-Set these environment variables (or GitHub secrets):
-- `ALPACA_BROKER_API_KEY`
-- `ALPACA_BROKER_API_SECRET`
-- `ALPACA_BROKER_ACCOUNT_ID`
 - `ALPACA_BANK_RELATIONSHIP_ID`
 
 For public repositories, store these as Environment Secrets under `alpaca-trading`:
@@ -260,8 +206,6 @@ For non-interactive environments, pass:
 ```bash
 python scripts/run_automation.py --config configs/automation.yaml --mode live --action allocation --force-immediate --investment-amount 100.00 --execute-live-now --confirm-live
 ```
-
-Live safety gates for non-dry-run allocation:
 - `--execute-live-now` must be present.
 - Interactive confirmation (`YES`) or `--confirm-live` must be provided.
 
