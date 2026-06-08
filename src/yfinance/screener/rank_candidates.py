@@ -67,27 +67,8 @@ def compute_insider_score(row: Dict[str, Any]) -> float:
     return signed
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--in", dest="infile", required=True)
-    p.add_argument("--out", dest="outfile", required=True)
-    p.add_argument("--top", type=int, default=20, help="number of top rows to print")
-    args = p.parse_args()
-
-    inp = Path(args.infile)
-    out = Path(args.outfile)
-    # append UTC date suffix _YYYYMMDD to outfile if not already present
-    date = datetime.utcnow().strftime("%Y%m%d")
-    if not out.stem.endswith(f"_{date}"):
-        out = out.with_name(f"{out.stem}_{date}{out.suffix}")
-    assert inp.exists(), f"Input not found: {inp}"
-
-    rows: List[Dict[str, Any]] = []
-    with inp.open("r", encoding="utf-8") as f:
-        rdr = csv.DictReader(f)
-        for r in rdr:
-            rows.append(r)
-
+def rank_rows(rows: List[Dict[str, Any]], out: Path) -> Path:
+    """Compute composite scores and write a ranked CSV."""
     pct_1w = [safe_float(r.get("pct_1w")) for r in rows]
     pct_1m = [safe_float(r.get("pct_1m")) for r in rows]
     rel_vol = [safe_float(r.get("rel_volume")) for r in rows]
@@ -191,12 +172,40 @@ def main():
                 new[k] = f"{v:.6f}"
             w.writerow(new)
 
-    top = min(args.top, len(combined))
+    return out
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--in", dest="infile", required=True)
+    p.add_argument("--out", dest="outfile", required=True)
+    p.add_argument("--top", type=int, default=20, help="number of top rows to print")
+    args = p.parse_args()
+
+    inp = Path(args.infile)
+    out = Path(args.outfile)
+    # append UTC date suffix _YYYYMMDD to outfile if not already present
+    date = datetime.utcnow().strftime("%Y%m%d")
+    if not out.stem.endswith(f"_{date}"):
+        out = out.with_name(f"{out.stem}_{date}{out.suffix}")
+    assert inp.exists(), f"Input not found: {inp}"
+
+    rows: List[Dict[str, Any]] = []
+    with inp.open("r", encoding="utf-8") as f:
+        rdr = csv.DictReader(f)
+        for r in rdr:
+            rows.append(r)
+
+    rank_rows(rows, out)
+
+    top = min(args.top, len(rows))
     if top:
+        with out.open("r", encoding="utf-8", newline="") as f:
+            ranked = list(csv.DictReader(f))
         print(f"Top {top} candidates:")
         for i in range(top):
-            score = combined[i][1]
-            row = combined[i][2]
+            row = ranked[i]
+            score = safe_float(row.get("score_norm")) or 0.0
             print(f"{i+1}. {row.get('symbol') or row.get('ticker')} - score={score:.4f}")
 
 

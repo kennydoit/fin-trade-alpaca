@@ -10,16 +10,33 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+REPO_SRC = Path(__file__).resolve().parents[2]
+if str(REPO_SRC) not in sys.path:
+    sys.path.insert(0, str(REPO_SRC))
 
-def get_candidates(limit: int = 200, **kwargs) -> List[Dict[str, Any]]:
-    """Return candidate symbols by reusing the existing screener."""
+try:
+    from yfinance.screener.rank_candidates import rank_rows
+    from yfinance.screener.dedup_by_correlation import dedup_csv
+except Exception:
+    try:
+        from .rank_candidates import rank_rows
+        from .dedup_by_correlation import dedup_csv
+    except Exception:
+        from sandbox.rank_candidates import rank_rows
+        from sandbox.dedup_by_correlation import dedup_csv
+
+
+def get_candidates(limit: int = 200, sectors: Optional[List[str] | str] = None, **kwargs) -> List[Dict[str, Any]]:
+    """Return candidate symbols by reusing the existing screener, including multi-sector support."""
     try:
         from .yfinance_equity_screener import screen_equities
     except Exception:
@@ -31,7 +48,38 @@ def get_candidates(limit: int = 200, **kwargs) -> List[Dict[str, Any]]:
             except Exception:
                 raise
 
-    return screen_equities(limit=limit, **kwargs)
+    if sectors is None:
+        sectors = kwargs.pop("sector", None)
+
+    call_kwargs = dict(kwargs)
+    call_kwargs.pop("sector", None)
+
+    normalized_sectors = []
+    if isinstance(sectors, str):
+        normalized_sectors = [item.strip() for item in sectors.split(",") if item.strip()]
+    elif sectors:
+        normalized_sectors = [str(item).strip() for item in sectors if str(item).strip()]
+
+    if not normalized_sectors:
+        return screen_equities(limit=limit, **kwargs)
+
+    results: List[Dict[str, Any]] = []
+    seen_symbols = set()
+    for sector in normalized_sectors:
+        if len(results) >= limit:
+            break
+
+        batch = screen_equities(limit=max(1, limit - len(results)), sector=sector, **call_kwargs)
+        for row in batch:
+            sym = (row.get("symbol") or row.get("ticker") or "") if isinstance(row, dict) else ""
+            if not sym or sym in seen_symbols:
+                continue
+            seen_symbols.add(sym)
+            results.append(row)
+            if len(results) >= limit:
+                break
+
+    return results
 
 
 def safe_float(x: Any) -> Optional[float]:
@@ -291,18 +339,114 @@ def write_combined_csv(original_rows: List[Dict[str, Any]], metrics_list: List[D
     return out_file
 
 
+def load_screener_config(config_path: Path) -> Dict[str, Any]:
+    if not config_path.exists():
+        raise FileNotFoundError(f"Screener config not found: {config_path}")
+
+    with config_path.open("r", encoding="utf-8") as fh:
+        config = json.load(fh)
+
+    if not isinstance(config, dict):
+        raise ValueError("Screener config must be a JSON object.")
+
+    return config
+
+
+def parse_csv_list(value: Optional[Any]) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def filter_candidates(rows: List[Dict[str, Any]], sectors: List[str], industry: Optional[str], min_avg_volume: Optional[int], min_market_cap: Optional[float], min_eod_price: Optional[float], max_eod_price: Optional[float]) -> List[Dict[str, Any]]:
+    filtered = []
+    sector_set = {s.lower() for s in sectors}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        row_sector = str(row.get("sector") or "").strip().lower()
+        if sector_set and row_sector:
+            if row_sector not in sector_set:
+                continue
+
+        row_industry = str(row.get("industry") or "").strip().lower()
+        if industry and row_industry:
+            if industry.lower() not in row_industry:
+                continue
+
+        if min_avg_volume is not None:
+            avg_vol = safe_float(row.get("averageDailyVolume3Month") or row.get("averageDailyVolume") or row.get("regularMarketVolume") or row.get("avgVolume"))
+            if avg_vol is None or avg_vol < float(min_avg_volume):
+                continue
+
+        if min_market_cap is not None:
+            cap = safe_float(row.get("marketCap") or row.get("market_cap") or row.get("marketcap"))
+            if cap is None or cap < float(min_market_cap):
+                continue
+
+        if min_eod_price is not None:
+            eod = safe_float(row.get("eodprice") or row.get("regularMarketPrice") or row.get("previousClose"))
+            if eod is None or eod < float(min_eod_price):
+                continue
+
+        if max_eod_price is not None:
+            eod = safe_float(row.get("eodprice") or row.get("regularMarketPrice") or row.get("previousClose"))
+            if eod is None or eod > float(max_eod_price):
+                continue
+
+        filtered.append(row)
+
+    return filtered
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--limit", type=int, default=200, help="number of candidates to fetch (default 200)")
-    p.add_argument("--sector", default=None, help="sector filter to pass to the screener (e.g., Technology)")
+    p.add_argument("--config", default="configs/equity_screener.json", help="path to a JSON screener config file")
+    p.add_argument("--limit", type=int, default=None, help="maximum number of candidates to fetch")
+    p.add_argument("--sector", default=None, help="single sector filter (e.g., Technology)")
+    p.add_argument("--sectors", default=None, help="comma-separated sector filters (e.g., Technology,Healthcare)")
+    p.add_argument("--industry", default=None, help="industry filter")
+    p.add_argument("--min-avg-volume", type=int, default=None, help="minimum average daily volume")
+    p.add_argument("--min-market-cap", type=float, default=None, help="minimum market cap")
+    p.add_argument("--min-eod-price", type=float, default=None, help="minimum eod price")
+    p.add_argument("--max-eod-price", type=float, default=None, help="maximum eod price")
     repo_root = Path(__file__).resolve().parents[2]
     default_reports = repo_root.joinpath("reports", "screener_results", "yfinance_screener_results_with_metrics.csv")
-    p.add_argument("--out", default=str(default_reports))
-    p.add_argument("--workers", type=int, default=6)
-    p.add_argument("--pause", type=float, default=0.0, help="pause (s) between metric fetches to be gentle")
-    p.add_argument("--max-eod-price", type=float, default=None, help="filter candidates to eodprice < value")
+    p.add_argument("--out", default=None, help="output CSV path")
+    p.add_argument("--pause", type=float, default=None, help="pause (s) between metric fetches to be gentle")
     p.add_argument("--candidates-file", default=None, help="path to existing candidates CSV to use instead of running screener")
     args = p.parse_args()
+
+    try:
+        config = load_screener_config(Path(args.config))
+    except FileNotFoundError:
+        config = {}
+
+    limit = args.limit if args.limit is not None else int(config.get("limit", 200))
+    max_symbols = int(config.get("max_symbols", limit))
+    effective_limit = min(limit, max_symbols) if max_symbols else limit
+
+    sectors = parse_csv_list(args.sectors or config.get("sectors") or args.sector or config.get("sector"))
+    industry = args.industry if args.industry is not None else config.get("industry")
+    min_avg_volume = args.min_avg_volume if args.min_avg_volume is not None else config.get("min_avg_volume")
+    min_market_cap = args.min_market_cap if args.min_market_cap is not None else config.get("min_market_cap")
+    min_eod_price = args.min_eod_price if args.min_eod_price is not None else config.get("min_eod_price")
+    max_eod_price = args.max_eod_price if args.max_eod_price is not None else config.get("max_eod_price")
+    out_path = Path(args.out) if args.out else Path(config.get("out", default_reports))
+    workers = int(config.get("workers", 6))
+    pause = args.pause if args.pause is not None else float(config.get("pause", 0.0))
+
+    print(f"Loaded config from {args.config}")
+    if sectors:
+        print(f"Sectors: {', '.join(sectors)}")
+    if industry:
+        print(f"Industry: {industry}")
+    print(f"Max symbols to process: {effective_limit}")
 
     candidates = []
     if args.candidates_file:
@@ -316,9 +460,25 @@ def main():
         else:
             print(f"Candidates file {cf} not found; falling back to screener")
 
+    if args.candidates_file:
+        candidates = filter_candidates(candidates, sectors, industry, min_avg_volume, min_market_cap, min_eod_price, max_eod_price)
+        if effective_limit and len(candidates) > effective_limit:
+            candidates = candidates[:effective_limit]
+
     if not candidates:
-        print(f"Fetching up to {args.limit} candidates from screener...")
-        candidates = get_candidates(limit=args.limit, sector=args.sector)
+        print(f"Fetching up to {effective_limit} candidates from screener...")
+        candidates = get_candidates(
+            limit=effective_limit,
+            sectors=sectors,
+            sector=sectors[0] if len(sectors) == 1 else None,
+            industry=industry,
+            min_eod_price=min_eod_price,
+            max_eod_price=max_eod_price,
+            min_avg_volume=min_avg_volume,
+            min_market_cap=min_market_cap,
+            region=config.get("region", "us"),
+            exchange=config.get("exchange"),
+        )
 
     try:
         from .yfinance_equity_screener import enrich_results_with_info
@@ -334,6 +494,10 @@ def main():
             except Exception:
                 pass
 
+    candidates = filter_candidates(candidates, sectors, industry, min_avg_volume, min_market_cap, min_eod_price, max_eod_price)
+    if effective_limit and len(candidates) > effective_limit:
+        candidates = candidates[:effective_limit]
+
     symbols = []
     for r in candidates:
         if isinstance(r, dict):
@@ -341,13 +505,13 @@ def main():
             if sym:
                 symbols.append(sym)
 
-    if args.max_eod_price is not None:
+    if max_eod_price is not None:
         def _eod_ok(row):
             try:
-                v = row.get("eodprice") if isinstance(row, dict) else None
-                if v is None:
+                if not isinstance(row, dict):
                     return False
-                return safe_float(v) is not None and safe_float(v) < float(args.max_eod_price)
+                v = safe_float(row.get("eodprice") or row.get("regularMarketPrice") or row.get("previousClose") or row.get("currentPrice"))
+                return v is not None and v < float(max_eod_price)
             except Exception:
                 return False
 
@@ -355,18 +519,37 @@ def main():
         filtered = [r for r in candidates if isinstance(r, dict) and ((r.get("symbol") or r.get("ticker")) and _eod_ok(r))]
         candidates = filtered
         symbols = [r.get("symbol") or r.get("ticker") for r in candidates]
-        print(f"Filtered candidates by eodprice < {args.max_eod_price}: {before} -> {len(symbols)}")
+        print(f"Filtered candidates by eodprice < {max_eod_price}: {before} -> {len(symbols)}")
 
-    print(f"Computing metrics for {len(symbols)} symbols (workers={args.workers})...")
-    metrics = compute_metrics(symbols, workers=args.workers, pause=args.pause)
+    print(f"Computing metrics for {len(symbols)} symbols (workers={workers})...")
+    metrics = compute_metrics(symbols, workers=workers, pause=pause)
 
-    out_path = Path(args.out)
     # append UTC date suffix _YYYYMMDD to outfile if not already present
     date = datetime.utcnow().strftime("%Y%m%d")
     if not out_path.stem.endswith(f"_{date}"):
         out_path = out_path.with_name(f"{out_path.stem}_{date}{out_path.suffix}")
     write_combined_csv(candidates, metrics, out_path)
     print(f"Saved {len(symbols)} candidates with metrics to {out_path}")
+
+    if str(config.get("correlation_dedup", "false")).lower() in {"1", "true", "yes", "on"}:
+        ranked_path = out_path.with_name(f"{out_path.stem}_ranked{out_path.suffix}")
+        with out_path.open("r", encoding="utf-8", newline="") as f:
+            ranked_rows = list(csv.DictReader(f))
+        rank_rows(ranked_rows, ranked_path)
+        print(f"Wrote ranked CSV to {ranked_path}")
+
+        dedup_method = str(config.get("correlation_dedup_method", "CORRELATION")).upper()
+        threshold = float(config.get("correlation_dedup_threshold", 0.85))
+        dedup_csv(
+            ranked_path,
+            threshold=threshold,
+            period=str(config.get("correlation_dedup_period", "3mo")),
+            interval=str(config.get("correlation_dedup_interval", "1d")),
+            method=dedup_method,
+            window=config.get("correlation_dedup_window"),
+            transform=str(config.get("correlation_dedup_transform", "NONE")).upper(),
+        )
+        print("Correlation deduplication step completed.")
 
 
 if __name__ == "__main__":

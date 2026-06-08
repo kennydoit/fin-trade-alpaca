@@ -1,0 +1,3 @@
+symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE,score_raw,score_norm,rank,pct_1w_n,pct_1m_n,rel_volume_n,revenueGrowth_n,earningsQuarterlyGrowth_n,rec_n,insider_n,valuation_n,kept,dropped_due_to
+SWKS,"Skyworks Solutions, Inc.",NMS,Technology,Semiconductors,73.57,75.985,-4.1077,14.5991,0.9168,-0.01,-0.482,1.59,31.6125,0.423536,0.49932,97,0.664294,0.542312,0.164014,0.09562,0.049558,0.5,0.5,0.962828,False,QRVO
+QBTS,D-Wave Quantum Inc.,NYQ,Technology,Computer Hardware,23.85,25.755,-14.1424,13.7794,0.795,-0.809,,,,0.375823,0.339449,154,0.441874,0.534761,0.13894,0.0,0.5,0.5,0.5,0.5,False,IONQ

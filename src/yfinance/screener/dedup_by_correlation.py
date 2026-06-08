@@ -121,18 +121,7 @@ def cluster_dedup(symbols: List[str], corr: pd.DataFrame, threshold: float) -> D
     return dropped_due_to
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--in", dest="infile", required=True)
-    p.add_argument("--threshold", type=float, default=0.85, help="correlation threshold (abs) to consider symbols as duplicates")
-    p.add_argument("--period", default="3mo", help="price history period for correlation (e.g., 1mo,3mo,6mo)")
-    p.add_argument("--interval", default="1d", help="price history interval")
-    p.add_argument("--method", choices=["CORRELATION", "CLUSTER"], default="CORRELATION", help="dedup method")
-    p.add_argument("--window", type=int, default=None, help="use only the latest N trading rows from downloaded prices (overrides period when provided)")
-    p.add_argument("--transform", choices=["NONE", "LOG"], default="NONE", help="return transformation to compute (NONE or LOG)")
-    args = p.parse_args()
-
-    inp = Path(args.infile)
+def dedup_csv(inp: Path, threshold: float = 0.85, period: str = "3mo", interval: str = "1d", method: str = "CORRELATION", window: Optional[int] = None, transform: str = "NONE") -> tuple[Path, Path, Path]:
     assert inp.exists(), f"Input not found: {inp}"
 
     df = pd.read_csv(inp)
@@ -146,24 +135,24 @@ def main():
 
     symbols = [str(x).strip() for x in df["symbol"].tolist()]
 
-    print(f"Downloading price history for {len(symbols)} symbols (period={args.period})...")
-    adj = download_prices(symbols, period=args.period, interval=args.interval)
+    print(f"Downloading price history for {len(symbols)} symbols (period={period})...")
+    adj = download_prices(symbols, period=period, interval=interval)
     if adj.empty:
         raise SystemExit("Failed to download price data or no data returned")
 
-    if args.window is not None:
-        adj = adj.tail(args.window)
+    if window is not None:
+        adj = adj.tail(window)
 
-    returns = compute_returns(adj, transform=("LOG" if args.transform == "LOG" else "NONE"))
+    returns = compute_returns(adj, transform=("LOG" if transform == "LOG" else "NONE"))
     corr = returns.corr()
 
-    print(f"Dedup method={args.method}, threshold={args.threshold}, transform={args.transform}, window={args.window}")
-    if args.method == "CORRELATION":
+    print(f"Dedup method={method}, threshold={threshold}, transform={transform}, window={window}")
+    if method == "CORRELATION":
         print("Computing greedy deduplication (correlation)...")
-        dropped_map = greedy_dedup(symbols, corr, args.threshold)
+        dropped_map = greedy_dedup(symbols, corr, threshold)
     else:
         print("Computing cluster-based deduplication...")
-        dropped_map = cluster_dedup(symbols, corr, args.threshold)
+        dropped_map = cluster_dedup(symbols, corr, threshold)
 
     # append UTC date suffix _YYYYMMDD to output filenames unless input already contains date
     date = datetime.utcnow().strftime("%Y%m%d")
@@ -187,6 +176,21 @@ def main():
     print(f"Wrote deduped list to {out_dedup} (kept {df_out['kept'].sum()} / {len(df_out)})")
     df_out[~df_out['kept']].to_csv(out_dropped, index=False)
     print(f"Wrote dropped list to {out_dropped} (dropped {(~df_out['kept']).sum()} )")
+    return out_flags, out_dedup, out_dropped
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--in", dest="infile", required=True)
+    p.add_argument("--threshold", type=float, default=0.85, help="correlation threshold (abs) to consider symbols as duplicates")
+    p.add_argument("--period", default="3mo", help="price history period for correlation (e.g., 1mo,3mo,6mo)")
+    p.add_argument("--interval", default="1d", help="price history interval")
+    p.add_argument("--method", choices=["CORRELATION", "CLUSTER"], default="CORRELATION", help="dedup method")
+    p.add_argument("--window", type=int, default=None, help="use only the latest N trading rows from downloaded prices (overrides period when provided)")
+    p.add_argument("--transform", choices=["NONE", "LOG"], default="NONE", help="return transformation to compute (NONE or LOG)")
+    args = p.parse_args()
+
+    dedup_csv(Path(args.infile), threshold=args.threshold, period=args.period, interval=args.interval, method=args.method, window=args.window, transform=args.transform)
 
 
 if __name__ == "__main__":

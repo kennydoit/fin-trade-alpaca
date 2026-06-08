@@ -1,0 +1,20 @@
+{
+  "candidates_file": "reports/screener_results/yfinance_screener_results_with_metrics.csv",
+  "sector": null,
+  "industry": null,
+  "limit": 200,
+  "return_days": 5,
+  "lookback": 180,
+  "out": "reports/screener_results/predictions.csv",
+  "versioned": false,
+  "model": {
+    "type": "random_forest",
+    "n_estimators": 100,
+    "random_state": 42
+  },
+  "target": {
+    "horizon_days": 5,
+    "label_column": "fwd_ret",
+    "train_split_days": 30
+  }
+}
