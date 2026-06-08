@@ -1,0 +1,141 @@
+symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE
+ZYME,Zymeworks Inc.,NMS,Healthcare,Biotechnology,24.04,24.015,-0.3526,0.5651,0.0640,-0.9110,,,
+ZWS,Zurn Elkay Water Solutions Corp,NYQ,Industrials,Pollution & Treatment Controls,47.37,47.8001,0.7378,-6.4002,0.0348,0.1140,0.3510,1.6600,38.8619
+ZVRA,"Zevra Therapeutics, Inc.",NMS,Healthcare,Biotechnology,10.61,10.785,0.3676,-1.8868,0.1562,0.7750,,10.6700,5.4229
+ZUMZ,Zumiez Inc.,NMS,Consumer Cyclical,Apparel Retail,17.39,18.86,-18.8602,-24.7807,0.2419,0.0490,,0.9600,25.1467
+ZTS,Zoetis Inc.,NYQ,Healthcare,Drug Manufacturers - Specialty & Generic,79.44,78.395,2.4611,-5.5053,0.1117,0.0290,-0.0020,1.9000,12.8262
+ZTO,ZTO Express (Cayman) Inc.,NYQ,Industrials,Integrated Freight & Logistics,22.28,22.25,-1.5494,-11.2176,0.0731,0.2200,0.0630,1.2000,13.1598
+ZS,"Zscaler, Inc.",NMS,Technology,Software - Infrastructure,130.78,130.275,-9.5838,-14.3266,0.2026,0.2540,,1.4200,
+ZM,"Zoom Communications, Inc.",NMS,Technology,Software - Application,101.62,101.17,-9.5951,-7.3849,0.0777,0.0550,0.6720,4.2100,14.8962
+ZKH,ZKH Group Limited,NYQ,Consumer Cyclical,Internet Retail,2.83,2.9264,1.6111,-2.4533,0.1110,0.0920,,,
+ZION,Zions Bancorporation N.A.,NMS,Financial Services,Banks - Regional,63.23,63.53,2.3702,2.3563,0.0893,0.1020,0.3710,3.4600,9.8587
+ZIM,ZIM Integrated Shipping Service,NYQ,Industrials,Marine Shipping,25.24,25.27,0.2380,-5.0357,0.1266,-0.3040,,,30.8171
+ZGN,Ermenegildo Zegna N.V.,NYQ,Consumer Cyclical,Apparel Manufacturing,14.65,14.9,2.0548,13.2219,0.2173,0.0030,0.0670,5.0543,33.8636
+ZG,"Zillow Group, Inc.",NMS,Communication Services,Internet Content & Information,35.39,35.255,-3.6222,-15.9394,0.0978,0.1840,4.7500,0.9200,141.0200
+ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,22.02,21.956,-13.3069,27.7130,0.1348,0.4990,,0.7700,
+ZD,"Ziff Davis, Inc.",NMS,Communication Services,Advertising Agencies,45.81,45.845,0.9357,11.7626,0.0885,-0.0190,-0.0820,1.5200,39.1838
+ZBRA,Zebra Technologies Corporation,NMS,Technology,Communication Equipment,232.11,232.56,-8.5580,2.9354,0.0626,0.1430,-0.0070,0.5000,28.0657
+ZBIO,"Zenas BioPharma, Inc.",NMS,Healthcare,Biotechnology,17.47,17.085,-0.2627,-13.0092,0.0824,,,,
+ZBH,"Zimmer Biomet Holdings, Inc.",NYQ,Healthcare,Medical Devices,87.33,87.85,4.8955,6.7047,0.0733,0.0930,0.3080,0.6200,22.7591
+Z,"Zillow Group, Inc.",NMS,Communication Services,Internet Content & Information,35.06,34.945,-3.8768,-15.6167,0.1042,0.1840,4.7500,0.9300,139.8400
+YUMC,"Yum China Holdings, Inc.",NYQ,Consumer Cyclical,Restaurants,42.88,42.88,-1.2560,-8.0431,0.0855,0.0970,0.0580,1.1100,17.0697
+YUM,"Yum! Brands, Inc.",NYQ,Consumer Cyclical,Restaurants,150.87,148.97,1.5691,-1.5409,0.0763,0.1520,0.7080,1.8700,24.0129
+YSWY,"Yesway, Inc.",NMS,Consumer Defensive,Grocery Stores,22.18,22.02,8.7250,-15.6189,0.0240,0.1110,2.7930,,
+YSS,York Space Systems Inc.,NYQ,Industrials,Aerospace & Defense,29.14,30.01,-6.2046,-13.9692,0.0669,0.0950,,,
+YPF,YPF Sociedad Anonima,NYQ,Energy,Oil & Gas Integrated,53.5,54.37,-1.6995,28.3219,0.0693,0.4280,,0.1000,
+YOU,"Clear Secure, Inc.",NYQ,Technology,Software - Application,54.52,54.28,-4.5967,-4.6471,0.0837,0.1970,0.5270,0.8223,43.3360
+YORW,The York Water Company,NMS,Utilities,Utilities - Regulated Water,30.28,30.18,0.8353,1.8906,0.0298,0.0880,0.3230,4.1000,20.5306
+YMM,Full Truck Alliance Co. Ltd.,NYQ,Technology,Software - Application,8.59,8.555,-10.0421,-2.8944,0.0682,0.0550,-0.2190,,14.5000
+YEXT,"Yext, Inc.",NYQ,Technology,Software - Infrastructure,3.89,3.855,-8.4323,-4.1045,0.0433,-0.0140,2.4090,0.2000,48.1875
+YETI,"YETI Holdings, Inc.",NYQ,Consumer Cyclical,Leisure,47.37,48.19,4.3968,16.0607,0.0552,0.0830,-0.4070,1.2700,24.5918
+YELP,Yelp Inc.,NYQ,Communication Services,Internet Content & Information,23.25,23.1684,0.2167,-14.6233,0.0508,0.0080,-0.2730,0.5700,10.6055
+YALA,Yalla Group Limited,NYQ,Technology,Software - Application,5.29,5.38,-4.7788,-23.3618,0.0320,-0.0580,-0.2200,0.5900,6.8101
+XZO,"Exzeo Group, Inc.",NYQ,Financial Services,Insurance - Diversified,13.17,13.15,-8.6171,-2.5204,0.0586,0.0990,0.1370,1.0211,13.9894
+XYZ,"Block, Inc.",NYQ,Technology,Software - Infrastructure,68.15,69.77,-5.9879,-6.8671,0.1245,0.0490,,0.7600,54.4609
+XYL,Xylem Inc.,NYQ,Industrials,Specialty Industrial Machinery,109.94,110.7825,0.4466,-2.2097,0.0732,0.0270,0.1420,1.5600,27.5578
+XXI,"Twenty One Capital, Inc.",NYQ,Financial Services,Shell Companies,5.64,5.8778,-11.8771,-31.8121,0.1700,,,,
+XRX,Xerox Holdings Corporation,NMS,Industrials,Business Equipment & Supplies,3.32,3.43,3.4954,22.4820,0.1266,0.2670,,0.1500,
+XRN,Chiron Real Estate Inc.,NYQ,Real Estate,REIT - Healthcare Facilities,35.9,36.21,1.7421,7.3126,0.0531,0.1010,-0.5160,5.0900,
+XRAY,DENTSPLY SIRONA Inc.,NMS,Healthcare,Medical Instruments & Supplies,10.0,10.045,2.0590,-8.7964,0.0664,0.0010,,0.7100,
+XPRO,Expro Group Holdings N.V.,NYQ,Energy,Oil & Gas Equipment & Services,15.38,16.14,5.0715,5.1399,0.0710,-0.0600,,0.7400,50.5000
+XPO,"XPO, Inc.",NYQ,Industrials,Trucking,218.94,224.215,3.3535,9.6406,0.0268,0.0730,0.4640,2.4200,77.0498
+XPEV,XPeng Inc.,NYQ,Consumer Cyclical,Auto Manufacturers,15.95,16.25,-9.1671,4.0333,0.1509,-0.1760,,,
+XPER,Xperi Inc.,NYQ,Technology,Software - Application,7.405,7.525,-5.8198,-6.2889,0.0396,0.0020,,,
+XP,XP Inc.,NMS,Financial Services,Capital Markets,15.34,15.215,-6.1111,-20.6573,0.1033,0.0970,0.0600,1.2934,7.7602
+XOM,Exxon Mobil Corporation,NYQ,Energy,Oil & Gas Integrated,149.92,153.46,2.6432,6.9068,0.0957,0.0260,-0.4580,1.3800,25.8440
+XMTR,"Xometry, Inc.",NMS,Industrials,Industrial Distribution,80.66,83.85,-1.6353,4.4994,0.0961,0.3590,,,
+XIFR,"XPLR Infrastructure, LP",NYQ,Utilities,Utilities - Renewable,11.62,11.78,-7.9875,0.1705,0.0315,-0.0250,,4.1700,9.6311
+XHR,"Xenia Hotels & Resorts, Inc.",NYQ,Real Estate,REIT - Hotel & Motel,18.39,18.53,4.3356,8.8080,0.0593,0.0220,0.2690,0.9841,26.4714
+XERS,"Xeris Biopharma Holdings, Inc.",NMS,Healthcare,Drug Manufacturers - Specialty & Generic,6.18,6.26,4.3333,-4.1348,0.0644,0.3830,,,89.4286
+XEL,Xcel Energy Inc.,NMS,Utilities,Utilities - Regulated Electric,79.04,78.63,0.9464,-0.9863,0.1062,0.0290,0.1510,2.1500,22.6533
+XE,"X-Energy, Inc.",NMS,Industrials,Specialty Industrial Machinery,21.42,22.28,-19.3256,-26.2757,0.0739,0.4300,,,
+WYNN,"Wynn Resorts, Limited",NMS,Consumer Cyclical,Resorts & Casinos,104.48,105.0,0.3154,2.7394,0.0366,0.0920,0.6560,1.7600,30.0716
+WY,Weyerhaeuser Company,NYQ,Real Estate,REIT - Specialty,24.48,24.365,0.6921,4.3723,0.0803,-0.0200,0.8800,1.8600,43.4821
+WWW,"Wolverine World Wide, Inc.",NYQ,Consumer Cyclical,Footwear & Accessories,15.9,16.64,-1.8868,-0.3593,0.1062,0.1100,0.6690,2.3600,13.5285
+WWD,"Woodward, Inc.",NMS,Industrials,Aerospace & Defense,357.74,362.06,4.9478,-2.1220,0.0512,0.2340,0.2300,2.2700,43.3759
+WU,Western Union Company (The),NYQ,Financial Services,Credit Services,7.48,7.31,-8.2811,-19.4046,0.2862,-0.0010,-0.4760,2.0100,5.3750
+WTW,Willis Towers Watson Public Lim,NMS,Financial Services,Insurance Brokers,263.54,263.8,2.8353,2.8554,0.0716,0.0850,0.2640,1.2700,15.4994
+WTTR,"Select Water Solutions, Inc.",NYQ,Energy,Oil & Gas Equipment & Services,18.01,18.73,-0.6363,11.5476,0.0487,-0.0230,0.0450,19.8201,89.1905
+WTS,"Watts Water Technologies, Inc.",NYQ,Industrials,Specialty Industrial Machinery,314.21,316.26,1.9306,6.7384,0.0355,0.2140,0.3460,3.4200,28.9350
+WTRG,"Essential Utilities, Inc.",NYQ,Utilities,Utilities - Regulated Water,37.36,37.2,0.4590,0.2211,0.0553,0.1000,-0.2090,3.5700,18.9847
+WTI,"W&T Offshore, Inc.",NYQ,Energy,Oil & Gas E&P,3.7,3.9001,-2.8607,5.4915,0.0716,0.1550,,0.7300,
+WTFC,Wintrust Financial Corporation,NMS,Financial Services,Banks - Regional,152.9,153.71,2.4051,1.7467,0.0581,0.1040,0.2030,1.1700,12.8843
+WT,"WisdomTree, Inc.",NYQ,Financial Services,Asset Management,18.18,18.1,-4.5910,-5.1884,0.0497,0.4750,,1.5400,44.0976
+WST,"West Pharmaceutical Services, I",NYQ,Healthcare,Medical Instruments & Supplies,314.5,315.755,1.1300,-3.1365,0.0390,0.2100,0.5460,3.0300,42.1492
+WSR,Whitestone REIT,NYQ,Real Estate,REIT - Retail,19.06,19.06,0.2103,0.4215,0.0564,0.0890,0.1190,1.6684,19.8542
+WSO,"Watsco, Inc.",NYQ,Industrials,Industrial Distribution,371.38,372.435,2.3567,-11.4515,0.0248,0.0010,-0.0120,1.4700,30.5776
+WSM,"Williams-Sonoma, Inc.",NYQ,Consumer Cyclical,Specialty Retail,204.98,205.67,0.8095,12.8446,0.0447,0.0440,0.0000,2.7000,23.0370
+WSFS,WSFS Financial Corporation,NMS,Financial Services,Banks - Regional,71.77,72.55,1.5837,1.0879,0.0460,0.1610,0.3180,0.9800,12.9198
+WSE,Wise Group plc,NMS,Technology,Information Technology Services,11.19,11.13,-3.5962,-27.7597,0.0888,0.0920,-0.1390,4.6000,22.2500
+WSBC,"WesBanco, Inc.",NMS,Financial Services,Banks - Regional,34.39,35.61,4.1227,5.1262,0.5774,1.0770,,1.2300,10.9202
+WS,"Worthington Steel, Inc.",NYQ,Basic Materials,Steel,41.55,41.46,-5.3425,2.5476,0.0464,0.1200,-0.2460,,17.2750
+WRLD,World Acceptance Corporation,NMS,Financial Services,Credit Services,167.3,168.46,1.7393,12.5317,0.0477,0.0730,-0.1750,0.7000,24.4499
+WRBY,Warby Parker Inc.,NYQ,Healthcare,Medical Instruments & Supplies,22.72,23.9851,-4.6831,-19.0694,0.2480,0.0830,-0.0850,,2391.5002
+WRB,W.R. Berkley Corporation,NYQ,Financial Services,Insurance - Property & Casualty,68.57,67.575,3.5977,2.8091,0.1021,0.0400,0.2340,4.0100,14.3061
+WPP,WPP plc,NYQ,Communication Services,Advertising Agencies,17.7,17.67,-3.4713,-4.2346,0.0845,-0.0830,,4.2300,
+WPM,Wheaton Precious Metals Corp,NYQ,Basic Materials,Gold,116.23,115.945,-10.9124,-16.2665,0.1125,0.9160,1.2920,0.4300,29.3899
+WPC,W. P. Carey Inc. REIT,NYQ,Real Estate,REIT - Diversified,74.49,74.73,1.3010,0.8772,0.0814,0.0890,0.4010,1.4700,31.9444
+WOR,"Worthington Enterprises, Inc.",NYQ,Industrials,Metal Fabrication,57.31,57.345,-0.5118,5.3362,0.0297,0.2440,0.1460,1.9700,173.7727
+WOOF,Petco Health and Wellness Compa,NMS,Consumer Cyclical,Specialty Retail,2.83,2.855,-4.0439,1.0783,0.1636,0.0020,,,142.0150
+WOLF,"Wolfspeed, Inc.",NYQ,Technology,Semiconductors,55.06,56.945,-6.8703,22.0279,0.3171,-0.1900,,,
+WNC,Wabash National Corporation,NYQ,Industrials,Farm & Heavy Construction Machinery,7.34,7.575,-2.9525,1.2048,0.0374,-0.2040,,0.7300,
+WMT,Walmart Inc.,NMS,Consumer Defensive,Discount Stores,118.88,119.61,5.8641,-8.2343,0.1779,0.0730,0.1880,4.6800,42.1444
+WMS,"Advanced Drainage Systems, Inc.",NYQ,Industrials,Building Products & Equipment,130.15,130.825,-3.5641,-8.5103,0.0448,0.0990,-0.5740,1.1800,24.0046
+WMK,"Weis Markets, Inc.",NYQ,Consumer Defensive,Grocery Stores,78.25,79.15,6.6280,12.2377,0.0141,0.0460,0.4250,1.3800,19.5432
+WMG,Warner Music Group Corp.,NMS,Communication Services,Entertainment,29.93,30.08,-2.2403,-9.2456,0.0413,0.1670,4.0830,0.5500,35.8452
+WMB,"Williams Companies, Inc. (The)",NYQ,Energy,Oil & Gas Midstream,71.96,72.255,1.2972,0.3822,0.0386,0.0900,0.2520,2.2300,31.6820
+WM,"Waste Management, Inc.",NYQ,Industrials,Waste Management,220.4,219.81,4.1677,2.5039,0.0649,0.0350,0.1350,2.2400,31.7645
+WLY,"John Wiley & Sons, Inc.",NYQ,Communication Services,Publishing,44.16,44.115,0.0113,6.5837,0.0210,0.0130,,13.0500,15.4248
+WLTH,Wealthfront Corporation,NMS,Technology,Software - Application,9.85,8.895,-27.5386,-22.2319,1.2690,0.0710,-0.5050,,
+WLK,Westlake Corporation,NYQ,Basic Materials,Specialty Chemicals,84.64,85.2,-2.2458,-9.0146,0.0355,-0.0680,,1.7000,
+WKC,World Kinect Corporation,NYQ,Energy,Oil & Gas Refining & Marketing,29.83,30.17,4.5123,11.2301,0.1196,0.0250,,1.3200,
+WK,Workiva Inc.,NYQ,Technology,Software - Application,49.13,48.4,-6.6808,-5.4981,0.0618,0.1990,,,201.9583
+WIX,Wix.com Ltd.,NMS,Technology,Software - Infrastructure,52.39,49.835,-12.6774,-37.7996,0.3280,0.1430,,0.1200,
+WIW,Western Asset Inflation-Linked ,NYQ,Financial Services,Asset Management,8.46,8.45,-1.0539,-0.4316,0.3159,0.2430,1.0200,0.1167,11.9014
+WIT,Wipro Limited,NYQ,Technology,Information Technology Services,2.1,2.205,-0.5566,12.7026,0.0723,0.0770,-0.0190,1.3700,16.9054
+WING,Wingstop Inc.,NMS,Consumer Cyclical,Restaurants,142.23,144.905,-3.9801,12.0973,0.0433,0.0740,-0.6760,2.1000,35.8000
+WHR,Whirlpool Corporation,NYQ,Consumer Cyclical,"Furnishings, Fixtures & Appliances",39.47,39.46,-3.6942,-12.1552,0.0781,-0.0960,,1.0400,13.3881
+WHD,"Cactus, Inc. Class A Common Sto",NYQ,Energy,Oil & Gas Equipment & Services,56.62,57.98,-3.5114,7.3517,0.0236,0.3850,-0.2560,,54.1869
+WH,"Wyndham Hotels & Resorts, Inc.",NYQ,Consumer Cyclical,Lodging,81.96,80.375,-1.2396,-2.6612,0.0640,0.0350,0.0000,0.6700,31.9325
+WGS,GeneDx Holdings Corp.,NMS,Healthcare,Diagnostics & Research,52.21,52.63,-0.9411,29.0900,0.0631,0.1740,,,
+WGO,"Winnebago Industries, Inc.",NYQ,Consumer Cyclical,Recreational Vehicles,27.7,28.095,-3.8422,-11.3228,0.0728,0.0600,,0.1600,19.1531
+WFRD,Weatherford International plc,NMS,Energy,Oil & Gas Equipment & Services,97.17,100.26,-3.3263,-2.0035,0.0434,-0.0340,0.4210,2.0500,15.6917
+WFG,West Fraser Timber Co. Ltd,NYQ,Basic Materials,Lumber & Wood Production,66.0,65.47,-2.5309,5.8700,0.0458,-0.0860,,,
+WFC,Wells Fargo & Company,NYQ,Financial Services,Banks - Diversified,81.94,81.94,3.1156,8.2959,0.0598,0.0570,0.0730,1.4500,12.6607
+WF,Woori Financial Group Inc.,NYQ,Financial Services,Banks - Regional,60.57,57.855,-6.0795,-17.2554,0.4827,0.0590,-0.0200,2.5800,7.2957
+WEX,WEX Inc.,NYQ,Technology,Software - Infrastructure,148.21,147.86,0.0404,4.7797,0.0291,0.0580,0.0870,0.8500,16.7128
+WES,"Western Midstream Partners, LP",NYQ,Energy,Oil & Gas Midstream,44.37,43.98,0.8253,1.1267,0.1938,0.2250,0.1340,1.0796,14.4671
+WERN,"Werner Enterprises, Inc.",NMS,Industrials,Trucking,43.46,44.32,3.0937,21.6914,0.0499,0.1360,,3.8300,
+WEN,Wendy's Company (The),NMS,Consumer Cyclical,Restaurants,6.71,6.7609,-6.5534,-5.9963,0.0746,0.0330,-0.4210,1.1600,8.7500
+WELL,Welltower Inc.,NYQ,Real Estate,REIT - Healthcare Facilities,206.93,206.015,5.4057,-3.7353,0.0372,0.3830,1.8250,3.6600,99.4734
+WEC,"WEC Energy Group, Inc.",NYQ,Utilities,Utilities - Regulated Electric,112.95,112.44,2.0230,1.5793,0.0492,0.0900,0.1110,2.5100,22.5371
+WEAV,"Weave Communications, Inc.",NYQ,Healthcare,Health Information Services,5.69,5.66,-6.1360,-4.7138,0.0564,0.1740,,,
+WDS,Woodside Energy Group Limited,NYQ,Energy,Oil & Gas E&P,21.33,21.66,-3.7761,0.4172,0.0429,-0.1110,-0.1430,1.3300,15.2535
+WDI,,NYQ,Financial Services,Asset Management,13.22,13.33,-1.7024,-3.1138,0.4483,,,,9.6232
+WDH,Waterdrop Inc.,NYQ,Financial Services,Insurance - Diversified,1.4,1.4199,-5.9669,-8.9808,0.0968,1.0550,0.6270,0.1029,6.4541
+WDFC,WD-40 Company,NMS,Basic Materials,Specialty Chemicals,203.39,205.395,3.6309,-0.7474,0.0574,0.1070,-0.3190,3.7600,34.9992
+WDC,Western Digital Corporation,NMS,Technology,Computer Hardware,511.72,520.375,-7.6513,8.3366,0.1625,0.4550,5.1630,0.4600,31.0747
+WDAY,"Workday, Inc.",NMS,Technology,Software - Application,144.28,144.38,-3.0024,12.9704,0.0935,0.1350,2.2650,0.5700,45.1281
+WD,"Walker & Dunlop, Inc",NYQ,Financial Services,Mortgage Finance,51.25,51.49,3.5635,-4.2297,0.0194,0.3200,4.7630,1.0900,25.5371
+WCN,"Waste Connections, Inc.",NYQ,Industrials,Waste Management,155.22,155.835,4.4470,2.5688,0.0731,0.0640,-0.0920,2.5300,37.9805
+WCC,"WESCO International, Inc.",NYQ,Industrials,Industrial Distribution,354.31,355.89,-3.9638,0.4419,0.0948,0.1380,0.2990,2.3400,25.3646
+WBTN,WEBTOON Entertainment Inc.,NMS,Communication Services,Internet Content & Information,11.48,11.72,-2.6689,-12.1235,0.0654,-0.0150,,,
+WBS,Webster Financial Corporation,NYQ,Financial Services,Banks - Regional,72.27,72.55,-0.0826,0.0552,0.0465,0.0870,0.0850,1.7300,11.8926
+WBI,WaterBridge Infrastructure LLC,NYQ,Energy,Oil & Gas Equipment & Services,29.44,30.35,1.4036,11.1546,0.0178,1.0530,1.0540,4.1136,433.5714
+WBD,"Warner Bros. Discovery, Inc. - ",NMS,Communication Services,Entertainment,26.24,26.31,-3.2461,-2.9963,0.1009,-0.0100,,216.9200,
+WB,Weibo Corporation,NMS,Communication Services,Internet Content & Information,7.7,7.71,-4.0473,-9.2462,0.1603,0.0620,-0.6750,0.7900,5.3881
+WAY,Waystar Holding Corp.,NMS,Healthcare,Health Information Services,20.0,19.495,-6.3401,-8.7933,0.0513,0.2240,0.4790,0.6076,29.1045
+WAT,Waters Corporation,NYQ,Healthcare,Diagnostics & Research,365.36,369.6098,-0.6238,4.0773,0.0371,0.9140,,1.6200,47.0241
+WASH,"Washington Trust Bancorp, Inc.",NMS,Financial Services,Banks - Regional,33.4,33.915,3.4614,4.9335,0.0597,-0.0700,0.0350,2.7600,12.3814
+WAL,Western Alliance Bancorporation,NYQ,Financial Services,Banks - Regional,80.15,80.99,0.6733,-0.8610,0.0232,0.0790,-0.0850,1.4700,9.3993
+WAFD,"WaFd, Inc.",NMS,Financial Services,Banks - Regional,35.57,36.02,1.8953,2.0997,0.0395,0.0920,0.1650,1.8500,11.8098
+WABC,Westamerica Bancorporation,NMS,Financial Services,Banks - Regional,56.58,57.53,3.0819,4.8861,0.0454,-0.0670,-0.1190,4.6200,12.8129
+WAB,Westinghouse Air Brake Technolo,NYQ,Industrials,Railroads,260.4,262.815,-0.6540,-0.9824,0.0522,0.1300,0.1240,1.3700,37.1158
+W,Wayfair Inc.,NYQ,Consumer Cyclical,Internet Retail,68.35,68.225,-5.7246,2.8977,0.0618,0.0740,,23.5000,
+VZ,Verizon Communications Inc.,NYQ,Communication Services,Telecom Services,45.37,45.245,-5.6089,-4.3096,0.0929,0.0290,0.0340,0.8500,11.0207
+VYX,NCR Voyix Corporation,NYQ,Technology,Information Technology Services,6.91,6.98,-4.0578,-16.4671,0.0497,-0.0100,,2.6800,24.9107
+VVX,"V2X, Inc.",NYQ,Industrials,Aerospace & Defense,84.94,87.13,4.6984,24.3293,0.0398,0.2340,1.3340,0.2333,31.1179
+VVV,Valvoline Inc.,NYQ,Consumer Cyclical,Auto & Truck Dealerships,35.73,36.305,6.9829,1.9371,0.0379,0.2500,0.1910,1.1000,48.4133
+VVR,Invesco Senior Income Trust  (D,NYQ,Financial Services,Asset Management,3.015,3.025,-1.4658,0.4650,0.0752,-0.1880,,,33.6111
+VTS,"Vitesse Energy, Inc.",NYQ,Energy,Oil & Gas E&P,17.62,18.1,-0.7675,1.6283,0.0688,0.0220,,,
+VTRS,Viatris Inc.,NMS,Healthcare,Drug Manufacturers - Specialty & Generic,15.88,16.0699,2.5494,-5.6018,0.0395,0.0810,,0.1500,

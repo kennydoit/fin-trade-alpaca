@@ -24,6 +24,7 @@ dev = [
 yfinance-screener = "yfinance.screener.yfinance_growth_screener:main"
 yfinance-rank = "yfinance.screener.rank_candidates:main"
 yfinance-dedup = "yfinance.screener.dedup_by_correlation:main"
+predict-screener = "fin_trade_alpaca.cli.predict_screener_cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

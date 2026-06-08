@@ -475,7 +475,7 @@ def find_latest_screener_csv(repo_root: Path):
 
 
 def pick_top_n_from_screener(csv_path: Path, n: int):
-    # prefer pct_1w then pct_1m; return list of tuples (symbol, price)
+    # Try common prediction/score fields (prefer avg_ret, pred_ret), fall back to pct_1w/pct_1m.
     rows = []
     try:
         with csv_path.open("r", encoding="utf-8") as f:
@@ -484,10 +484,15 @@ def pick_top_n_from_screener(csv_path: Path, n: int):
                 sym = (r.get("symbol") or "").strip().upper()
                 if not sym:
                     continue
-                price = safe_float(r.get("regularMarketPrice") or r.get("eodprice"))
-                p1w = safe_float(r.get("pct_1w"))
-                p1m = safe_float(r.get("pct_1m"))
-                score = p1w if p1w is not None else (p1m if p1m is not None else None)
+                # price fields: regularMarketPrice, close, eodprice
+                price = safe_float(r.get("regularMarketPrice") or r.get("close") or r.get("eodprice"))
+                # score fields prefer avg_ret, then pred_ret, then avg_pred, then pct_1w/pct_1m
+                score = None
+                for fld in ("avg_ret", "pred_ret", "avg_pred", "pct_1w", "pct_1m"):
+                    val = safe_float(r.get(fld))
+                    if val is not None:
+                        score = val
+                        break
                 rows.append((sym, price, score))
     except Exception:
         return []
@@ -667,7 +672,10 @@ def choose_spendable_cash(available_cash: Decimal, max_notional: Decimal | None)
 
 
 def log_strategy_summary(strategy_config: dict) -> None:
+    total_investment = strategy_config.get("total_investment")
     print("Strategy summary:")
+    if total_investment is not None:
+        print(f"  total_investment={total_investment}")
     for bucket_name, bucket in strategy_config["buckets"].items():
         print(f"  Bucket {bucket_name}: weight={bucket['weight']}")
         assets = bucket.get("assets", {})
@@ -680,6 +688,19 @@ def log_strategy_summary(strategy_config: dict) -> None:
 
 def main() -> int:
     args = parse_args()
+    try:
+        strategy_config = load_strategy_config(Path(args.config))
+        config_mode = (strategy_config.get("mode") or "").strip().lower()
+        if config_mode in {"paper", "live"}:
+            args.mode = config_mode
+
+        config_dry_run = strategy_config.get("dry_run")
+        if isinstance(config_dry_run, bool):
+            args.dry_run = config_dry_run
+    except (FileNotFoundError, ValueError, json.JSONDecodeError):
+        strategy_config = None
+        config_mode = None
+
     load_environment_for_mode(args.mode, args.target, args.env_file)
 
     try:
@@ -719,11 +740,12 @@ def main() -> int:
         if not run_today:
             return 0
 
-    try:
-        strategy_config = load_strategy_config(Path(args.config))
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as ex:
-        print(f"Config error: {ex}")
-        return 2
+    if strategy_config is None:
+        try:
+            strategy_config = load_strategy_config(Path(args.config))
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as ex:
+            print(f"Config error: {ex}")
+            return 2
 
     log_strategy_summary(strategy_config)
 
@@ -733,7 +755,13 @@ def main() -> int:
     else:
         account = client.get_account()
         available_cash = Decimal(str(account.cash)).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-    spendable_cash = choose_spendable_cash(available_cash, args.max_notional)
+
+    total_investment = strategy_config.get("total_investment")
+    if total_investment is not None and Decimal(str(total_investment)) > 0:
+        spendable_cash = choose_spendable_cash(available_cash, Decimal(str(total_investment)))
+        print(f"Using total_investment=${total_investment} from config for this run.")
+    else:
+        spendable_cash = choose_spendable_cash(available_cash, args.max_notional)
 
     print(f"Account cash=${available_cash}; spendable cash this run=${spendable_cash}")
     if spendable_cash <= Decimal("0"):
@@ -742,20 +770,44 @@ def main() -> int:
 
     # Handle short-term allocation (use screener results)
     short_cfg = strategy_config.get("short_term_settings", {})
-    short_weight = Decimal(str(strategy_config.get("buckets", {}).get("short_term", {}).get("weight", 0)))
+    short_bucket = strategy_config.get("buckets", {}).get("short_term", {})
+    short_weight = Decimal(str(short_bucket.get("weight", 0)))
     short_order_ids: list[str] = []
-    if short_weight > 0 and short_cfg and short_cfg.get("number_of_assets", 0) > 0:
+    # determine number_of_assets: prefer bucket-level setting, fall back to short_term_settings
+    n_assets = int(short_bucket.get("number_of_assets") or short_cfg.get("number_of_assets", 0))
+    if short_weight > 0 and n_assets > 0:
         repo_root = Path(__file__).resolve().parents[2]
-        latest = find_latest_screener_csv(repo_root)
-        if latest is None:
+        # determine screener CSV path: prefer explicit path in bucket.screener
+        screener_path = short_bucket.get("screener") or short_cfg.get("screener")
+        csv_path = None
+        if screener_path:
+            p = Path(screener_path)
+            if not p.is_absolute():
+                csv_path = repo_root.joinpath(screener_path)
+            else:
+                csv_path = p
+            if not csv_path.exists():
+                print(f"Configured screener file {csv_path} not found. Attempting to find latest screener CSV.")
+                csv_path = None
+
+        if csv_path is None:
+            csv_path = find_latest_screener_csv(repo_root)
+
+        if csv_path is None:
             print("Short-term requested but no screener CSV found in reports/screener_results. Skipping short-term allocation.")
         else:
-            n = int(short_cfg.get("number_of_assets", 3))
-            picks = pick_top_n_from_screener(latest, n)
+            n = int(n_assets)
+            picks = pick_top_n_from_screener(csv_path, n)
             if not picks:
-                print(f"No valid picks found in screener {latest}. Skipping short-term allocation.")
+                print(f"No valid picks found in screener {csv_path}. Skipping short-term allocation.")
             else:
                 short_alloc = (spendable_cash * short_weight).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                # decide per-asset allocation based on asset_weights (only 'equal' supported)
+                asset_weights = (short_bucket.get("asset_weights") or short_cfg.get("asset_weights") or "equal")
+                if asset_weights != "equal":
+                    print(f"asset_weights='{asset_weights}' not supported, defaulting to 'equal'.")
+                stop_pct = short_bucket.get("stop_loss", short_cfg.get("stop_loss", -3.0))
+                take_pct = short_bucket.get("take_profit", short_cfg.get("take_profit", 15.0))
                 per_asset = (short_alloc / Decimal(str(len(picks)))).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
                 orders = []
                 for sym, price in picks:
@@ -763,8 +815,8 @@ def main() -> int:
                         "symbol": sym,
                         "notional": per_asset,
                         "price": price,
-                        "stop_pct": float(short_cfg.get("stop_loss", -3.0)),
-                        "take_pct": float(short_cfg.get("take_profit", 15.0)),
+                        "stop_pct": float(stop_pct),
+                        "take_pct": float(take_pct),
                     })
 
                 if short_alloc <= Decimal("0"):
