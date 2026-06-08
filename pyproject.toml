@@ -25,6 +25,18 @@ yfinance-screener = "yfinance.screener.yfinance_growth_screener:main"
 yfinance-rank = "yfinance.screener.rank_candidates:main"
 yfinance-dedup = "yfinance.screener.dedup_by_correlation:main"
 predict-screener = "fin_trade_alpaca.cli.predict_screener_cli:main"
+# Canonical orchestration entry points
+orchestration-optimize = "orchestration.commands.optimize_and_buy:main"
+orchestration-predict = "orchestration.commands.predict_screener:main"
+orchestration-clone = "orchestration.commands.clone_live_to_paper:main"
+orchestration-liquidate = "orchestration.commands.liquidate_paper_account:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["fin_trade_alpaca*", "yfinance*", "orchestration*"]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
