@@ -1,0 +1,79 @@
+Model Performance Comparison - 2026-06-13
+==============================================
+
+Test Configuration:
+- Model: LightGBM (200 estimators, lr=0.05)
+- Training Data: 100 symbols, ~15,000 samples, ~12,000 train / ~3,000 test
+- Features: 15 technical indicators (volume, momentum, SMA, z-score, weekly/monthly returns, etc.)
+
+Results by Return Horizon:
+---------------------------
+
+1-Day Returns (--return-days 1):
+  R² Score:    -0.0459  ⚠️  Still negative but BEST
+  Spearman IC: -0.0005  ⚠️  No ranking ability
+  MAE:          0.0311
+
+3-Day Returns (--return-days 3):
+  R² Score:    -0.0832  ⚠️  Negative
+  Spearman IC:  0.0517  ⚙️  Weak ranking ability
+  MAE:          0.0592
+
+5-Day Returns (--return-days 5):
+  R² Score:    -0.1367  ⚠️  WORST - Much worse than baseline
+  Spearman IC:  0.0368  ⚙️  Weak ranking ability
+  MAE:          0.0796
+
+Key Findings:
+-------------
+1. ✅ LightGBM and more data helped (RandomForest was even worse)
+2. ✅ Shorter horizons are less noisy (1-day best R²)
+3. ❌ Current technical features don't predict absolute returns well
+4. ⚙️  Models have weak ranking ability (IC ~0.05) for 3-5 day horizons
+5. ❌ All R² scores negative = model worse than predicting mean
+
+ROOT CAUSE: Feature engineering issue
+--------------------------------------
+Current features (technical indicators only) are insufficient for predicting 
+short-term returns. This is actually expected - markets are largely efficient 
+at short timescales.
+
+Recommendations:
+----------------
+1. ADD FUNDAMENTAL FEATURES:
+   - Price-to-earnings ratios
+   - Revenue/earnings growth rates
+   - Analyst estimates and surprises
+   - Insider trading signals
+   - Short interest
+   
+2. ADD MARKET CONTEXT FEATURES:
+   - Sector momentum
+   - Market regime indicators (VIX, breadth)
+   - Relative strength vs sector/market
+   
+3. ADD ALTERNATIVE DATA:
+   - News sentiment
+   - Social media mentions
+   - Options flow
+   
+4. CONSIDER ENSEMBLE:
+   - Combine multiple weak models
+   - Stack predictions from different horizons
+   
+5. REALISTIC EXPECTATIONS:
+   - R² > 0.01 would be good for daily returns
+   - IC > 0.05 is usable for ranking
+   - Focus on ranking (IC) not absolute prediction (R²)
+
+NEXT STEPS:
+-----------
+Since you're using this for RANKING candidates (not absolute return prediction),
+a positive Spearman IC is more important than R². Your 3-day model with IC=0.05
+can still provide value for portfolio construction by ranking stocks.
+
+Consider:
+- Using this as a ranking tool (top 20% of predictions)
+- Combining with other screeners (ensemble approach)
+- Adding more fundamental features over time
+- Backtesting the top-N strategy to measure real performance

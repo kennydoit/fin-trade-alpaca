@@ -8,3 +8,8 @@ wheels/
 .env*
 # Virtual environments
 .venv
+*.csv
+
+# Portfolio database (contains sensitive position data)
+reports/portfolio_db/*.db
+reports/portfolio_db/*.db-journal

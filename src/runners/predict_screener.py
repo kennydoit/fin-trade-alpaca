@@ -7,20 +7,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List
 
 import pandas as pd
-import sys
+import numpy as np
 
-# ensure repo root is on sys.path so we can import sandbox modules
+# Ensure the repo root is accessible for imports
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-# import functions from sandbox pipeline
-from sandbox.predict_short_term import (
+# Import from our local src/yfinance/screener module
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from yfinance.screener.predict_short_term import (
     find_latest_screener_file,
     build_dataset,
     train_and_evaluate,
@@ -37,7 +40,15 @@ DEFAULT_PREDICTION_CONFIG: dict[str, Any] = {
     "lookback": 180,
     "out": None,
     "versioned": False,
-    "model": {"type": "random_forest", "n_estimators": 100, "random_state": 42},
+    "model": {
+        "type": "lightgbm",
+        "n_estimators": 200,
+        "learning_rate": 0.05,
+        "random_state": 42,
+        "tune": False,
+        "tune_n_iter": 6,
+        "tune_cv": 3,
+    },
     "target": {"horizon_days": 5, "label_column": "fwd_ret"},
 }
 
@@ -98,41 +109,39 @@ def filter_candidates(df: pd.DataFrame, sector: str | None, industry: str | None
     return df
 
 
-def score_latest_local(model, feat_cols: list, cand_df: pd.DataFrame, symbols: List[str], return_days: int, out_path: Path):
-    adj = download_price_history(symbols, 200)
-    if adj.empty:
-        raise SystemExit('No price history available for scoring')
-    latest_date = adj.index[-1]
-    rows = []
-    for sym in symbols:
-        if sym not in adj.columns:
-            continue
-        series = adj[sym].dropna()
-        if len(series) < 30:
-            continue
-        tech = make_technical_features(series)
-        feat_row = tech.iloc[-1].to_dict()
-        meta = {}
-        row_meta = cand_df[cand_df['symbol'].astype(str) == sym]
-        if not row_meta.empty:
-            for col in ['pct_1w', 'pct_1m', 'rel_volume', 'revenueGrowth', 'earningsQuarterlyGrowth', 'pegRatio', 'trailingPE', 'sector', 'industry']:
-                if col in row_meta.columns:
-                    meta[col] = row_meta.iloc[0].get(col)
-        rec = {'symbol': sym, 'date': latest_date}
-        rec.update({k: (v if v is not None else pd.NA) for k, v in feat_row.items()})
-        rec.update(meta)
-        rows.append(rec)
-    df = pd.DataFrame(rows)
+def score_latest_local(model, feat_cols: list, cand_df: pd.DataFrame, symbols: List[str], return_days: int, out_path: Path, metrics: dict = None):
+    """Score latest prices using enhanced features from predict_short_term module."""
+    from yfinance.screener.predict_short_term import score_latest
+    
+    # Use the updated score_latest that handles enhanced features
+    df = score_latest(model, feat_cols, cand_df, symbols, return_days, metrics, use_enhanced_features=True)
+    
     if df.empty:
         raise SystemExit('No rows to score')
-    X = df[feat_cols].fillna(0.0)
-    preds = model.predict(X)
-    df['pred_ret'] = preds
-    df['avg_ret'] = df[['ret_1d','ret_3d','ret_5d']].mean(axis=1)
-    df = df.sort_values('avg_ret', ascending=False)
+    
+    # Add avg_ret column if not present
+    if 'avg_ret' not in df.columns and all(c in df.columns for c in ['ret_1d', 'ret_3d', 'ret_5d']):
+        df['avg_ret'] = df[['ret_1d','ret_3d','ret_5d']].mean(axis=1)
+    
+    # Sort and add strategy metadata
+    if 'pred_ret' in df.columns:
+        df = df.sort_values('pred_ret', ascending=False)
+    elif 'avg_ret' in df.columns:
+        df = df.sort_values('avg_ret', ascending=False)
+    
+    # Add strategy attribution metadata
+    df['screener_rank'] = range(1, len(df) + 1)
+    df['strategy_source'] = 'predictive_model'
+    if metrics:
+        df['model_type'] = metrics.get('model_type', 'unknown')
+        df['model_r2_score'] = metrics.get('r2_score')
+        df['model_spearman_ic'] = metrics.get('spearman_ic')
+        df['model_mae'] = metrics.get('mae')
+    
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
     print(f'Wrote predictions to {out_path}')
+
 
 
 def main():
@@ -169,7 +178,11 @@ def main():
         raise SystemExit('No training data constructed; try increasing lookback or limit')
 
     print(f'Constructed dataset with {len(df)} rows')
-    model, feat_cols = train_and_evaluate(df, runtime['return_days'])
+    model, feat_cols, metrics, feature_importance = train_and_evaluate(
+        df,
+        runtime['return_days'],
+        model_config=runtime.get('model', {}),
+    )
 
     # determine output path
     ts = datetime.utcnow().strftime('%Y%m%d')
@@ -177,7 +190,12 @@ def main():
         out_path = Path(runtime['out'])
     else:
         out_path = reports / f'predictions_{ts}.csv'
-    score_latest_local(model, feat_cols, cand_df, symbols, runtime['return_days'], out_path)
+    if not feature_importance.empty:
+        fi_path = reports / f'feature_importance_{ts}.csv'
+        feature_importance.to_csv(fi_path, index=False)
+        print(f'Wrote feature importances to {fi_path}')
+
+    score_latest_local(model, feat_cols, cand_df, symbols, runtime['return_days'], out_path, metrics)
 
     if runtime['versioned']:
         ver = datetime.utcnow().strftime('%Y%m%dT%H%M%S')

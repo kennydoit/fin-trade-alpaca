@@ -1,0 +1,107 @@
+Enhanced Feature Engineering Results - 2026-06-13
+======================================================
+
+TEST CONFIGURATION:
+- Symbols: 100 (from screener)
+- Return Horizon: 3 days
+- Model: LightGBM (200 estimators, lr=0.05)
+- Train/Test: 12,170 / 2,842 samples
+
+RESULTS COMPARISON:
+-------------------
+
+BASELINE (15 technical features only):
+├─ Features: close, ret_1d, ret_3d, ret_5d, vol_10d, mom_20d, sma_10, 
+│            price_sma10_z, pct_1w, pct_1m, rel_volume, revenueGrowth,
+│            earningsQuarterlyGrowth, pegRatio, trailingPE
+├─ Spearman IC: 0.0517
+├─ R² Score:    -0.0832
+└─ MAE:          0.0592
+
+ENHANCED (43 features with improvements):
+├─ Base: All baseline features
+├─ Sector/Industry: Added for context
+├─ Interaction Features (6):
+│  ├─ mom_volume (momentum × volume)
+│  ├─ sharpe_like (momentum / volatility)
+│  ├─ reversal_vol (short-term reversal × volatility)
+│  ├─ garp (growth at reasonable price)
+│  ├─ mom_contrast (long-term vs short-term momentum)
+│  └─ value_momentum (valuation × momentum)
+├─ Lagged Features (8):
+│  └─ mom_20d, vol_10d, rel_volume, pct_1w at lag-1 and lag-5
+├─ Sector-Relative Features (4):
+│  └─ mom_20d, trailingPE, revenueGrowth, pct_1m vs sector mean
+├─ Cross-Sectional Ranks (6):
+│  └─ Percentile ranks within date for key features
+├─ Missing Indicators (4):
+│  └─ Binary flags for missing fundamentals
+├─ Better Imputation:
+│  ├─ Winsorization (1st/99th percentile)
+│  ├─ Median imputation for ratios
+│  └─ Sector-based imputation for growth rates
+├─ Spearman IC: 0.0927  ⭐ +79% improvement
+├─ R² Score:    -0.0711  ⭐ +14.5% improvement (closer to 0)
+└─ MAE:          0.0588  ⭐ +0.7% improvement
+
+SUMMARY:
+--------
+✅ Spearman IC nearly DOUBLED (0.052 → 0.093) - ranking ability improved 79%
+✅ R² improved (still negative but much closer to baseline)
+✅ MAE slightly improved
+✅ Feature count: 15 → 43 features
+✅ All improvements from better feature engineering, no model tuning
+
+KEY INSIGHTS FOR STATISTICIAN/ECONOMETRICIAN:
+----------------------------------------------
+1. CROSS-SECTIONAL STRUCTURE MATTERS:
+   - Rank normalization captures relative position within cohort
+   - Sector-relative features control for common factor exposure
+   - These account for cross-sectional dependencies
+
+2. INTERACTION EFFECTS ARE STRONG:
+   - GARP (growth/valuation) captures value-growth interaction
+   - Momentum-volume captures conviction in price moves
+   - Volatility-adjusted returns normalize for risk
+
+3. TEMPORAL DYNAMICS:
+   - Lagged features capture momentum persistence
+   - Momentum contrast (long vs short) captures acceleration
+   - Short-term reversal effects captured
+
+4. MISSING DATA HANDLING:
+   - Missing indicators preserve signal of data availability
+   - Sector-based imputation leverages peer information
+   - Winsorization prevents outlier contamination
+
+5. IC vs R² INTERPRETATION:
+   - IC=0.093 is economically significant for stock selection
+   - Negative R² reflects market efficiency (hard to beat mean)
+   - IC measures RANKING ability (what matters for portfolio construction)
+   - In cross-sectional equity models, IC > 0.05 is actionable
+
+ECONOMETRIC CONSIDERATIONS:
+---------------------------
+- Features are standardized within cross-section (addresses heteroskedasticity)
+- Sector dummies implicitly included via sector-relative features
+- Time-series split preserves temporal ordering (no look-ahead bias)
+- Lagged features reduce simultaneity bias
+- Missing indicators address non-random missingness (MNAR)
+
+PRODUCTION RECOMMENDATIONS:
+---------------------------
+1. Monitor IC stability across time (rolling window validation)
+2. Test for feature stability (check correlation decay over time)
+3. Consider separate models by sector/market cap
+4. Add market regime indicators (volatility state, correlation regime)
+5. Backtest top-N strategy with transaction costs
+6. Consider ensemble with other screening approaches
+
+NEXT STEPS TO FURTHER IMPROVE:
+-------------------------------
+1. Add XGBoost model option (might handle interactions better)
+2. Feature selection (LASSO, permutation importance)
+3. Hyperparameter tuning (learning rate, tree depth, regularization)
+4. Add more alternative data (sentiment, options, insider trades)
+5. Ensemble multiple models/horizons
+6. Custom loss function (e.g., rankIC-optimized objective)

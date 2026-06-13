@@ -4,7 +4,7 @@
   "sectors": ["Technology", "Healthcare"],
   "industry": null,
   "min_eod_price": 5,
-  "max_eod_price": 100,
+  "max_eod_price": 75,
   "min_avg_volume": 100000,
   "min_market_cap": 300000000,
   "limit": 200,
@@ -13,8 +13,8 @@
   "pause": 0.0,
   "correlation_dedup": true,
   "correlation_dedup_method": "CORRELATION",
-  "correlation_dedup_threshold": 0.85,
+  "correlation_dedup_threshold": 0.75,
   "correlation_dedup_period": "3mo",
   "correlation_dedup_interval": "1d",
-  "out": "reports/screener_results/yfinance_screener_results_with_metrics_tech_health.csv"
+  "out": "reports/screener_results/yfinance_screener_results_with_metrics_tech_health_75cap.csv"
 }

@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
+import numpy as np
 import pandas as pd
 import sys
 
@@ -72,7 +73,7 @@ def score_latest_local(model, feat_cols: list, cand_df: pd.DataFrame, symbols: L
     df = pd.DataFrame(rows)
     if df.empty:
         raise SystemExit('No rows to score')
-    X = df[feat_cols].fillna(0.0)
+    X = df[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0).astype(np.float32)
     preds = model.predict(X)
     df['pred_ret'] = preds
     df['avg_ret'] = df[['ret_1d','ret_3d','ret_5d']].mean(axis=1)

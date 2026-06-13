@@ -19,34 +19,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-REPO_SRC = Path(__file__).resolve().parents[2]
-if str(REPO_SRC) not in sys.path:
-    sys.path.insert(0, str(REPO_SRC))
+SRC_ROOT = Path(__file__).resolve().parents[1]
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-try:
-    from yfinance.screener.rank_candidates import rank_rows
-    from yfinance.screener.dedup_by_correlation import dedup_csv
-except Exception:
-    try:
-        from .rank_candidates import rank_rows
-        from .dedup_by_correlation import dedup_csv
-    except Exception:
-        from sandbox.rank_candidates import rank_rows
-        from sandbox.dedup_by_correlation import dedup_csv
+from yfinance.screener.rank_candidates import rank_rows
+from yfinance.screener.dedup_by_correlation import dedup_csv
 
 
 def get_candidates(limit: int = 200, sectors: Optional[List[str] | str] = None, **kwargs) -> List[Dict[str, Any]]:
     """Return candidate symbols by reusing the existing screener, including multi-sector support."""
-    try:
-        from .yfinance_equity_screener import screen_equities
-    except Exception:
-        try:
-            from yfinance.screener.yfinance_equity_screener import screen_equities
-        except Exception:
-            try:
-                from sandbox.yfinance_equity_screener import screen_equities
-            except Exception:
-                raise
+    from yfinance.screener.yfinance_equity_screener import screen_equities
 
     if sectors is None:
         sectors = kwargs.pop("sector", None)
@@ -481,18 +464,11 @@ def main():
         )
 
     try:
-        from .yfinance_equity_screener import enrich_results_with_info
+        from yfinance.screener.yfinance_equity_screener import enrich_results_with_info
+
         candidates = enrich_results_with_info(candidates)
     except Exception:
-        try:
-            from sandbox.yfinance_equity_screener import enrich_results_with_info
-            candidates = enrich_results_with_info(candidates)
-        except Exception:
-            try:
-                from yfinance_equity_screener import enrich_results_with_info  # type: ignore
-                candidates = enrich_results_with_info(candidates)
-            except Exception:
-                pass
+        pass
 
     candidates = filter_candidates(candidates, sectors, industry, min_avg_volume, min_market_cap, min_eod_price, max_eod_price)
     if effective_limit and len(candidates) > effective_limit:

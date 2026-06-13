@@ -8,9 +8,13 @@
   "out": "reports/screener_results/predictions.csv",
   "versioned": false,
   "model": {
-    "type": "random_forest",
-    "n_estimators": 100,
-    "random_state": 42
+    "type": "lightgbm",
+    "n_estimators": 200,
+    "learning_rate": 0.05,
+    "random_state": 42,
+    "tune": false,
+    "tune_n_iter": 6,
+    "tune_cv": 3
   },
   "target": {
     "horizon_days": 5,

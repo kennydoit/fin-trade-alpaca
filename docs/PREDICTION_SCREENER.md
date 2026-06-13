@@ -44,3 +44,41 @@ Options
 Notes
 - This CLI reuses the sandbox prediction pipeline. It's intended as a reproducible and extensible runner. For production use, factor shared code into a package and add unit tests.
 - If you edit files under `src/`, reinstall the package in editable mode: `pip install -e .` to refresh console scripts.
+
+Output CSV Columns
+
+The predictions CSV includes:
+
+**Symbol & Date**
+- `symbol`: Stock ticker
+- `date`: Latest date for prediction
+
+**Technical Features**
+- `close`, `ret_1d`, `ret_3d`, `ret_5d`: Price and returns
+- `vol_10d`: 10-day volatility
+- `mom_20d`: 20-day momentum
+- `sma_10`: 10-day simple moving average
+- `price_sma10_z`: Z-score relative to SMA
+
+**Fundamental Metrics** (from screener input)
+- `pct_1w`, `pct_1m`: Recent price changes
+- `rel_volume`: Relative volume
+- `revenueGrowth`, `earningsQuarterlyGrowth`: Growth metrics
+- `pegRatio`, `trailingPE`: Valuation ratios
+- `sector`, `industry`: Classification
+
+**Predictions**
+- `pred_ret`: Predicted return (model output)
+- `avg_ret`: Average of ret_1d, ret_3d, ret_5d
+
+**Strategy Attribution** (NEW - for database integration)
+- `screener_rank`: Ranking from 1 (best) to N (sorted by avg_ret descending)
+- `strategy_source`: Always "predictive_model" for this screener
+- `model_type`: Model used ("lightgbm" if installed, else "random_forest")
+- `model_r2_score`: R² score from validation set
+- `model_spearman_ic`: Spearman IC from validation set
+- `model_mae`: Mean absolute error from validation set
+
+These attribution columns can be used to populate database metadata when positions are opened.
+See `tools/set_metadata_from_predictions.py` for an example integration.
+
