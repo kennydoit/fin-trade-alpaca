@@ -6,10 +6,13 @@ relying on sandbox copies.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -100,7 +103,7 @@ def build_dataset(cand_df: pd.DataFrame, symbols: List[str], lookback: int, retu
             meta = {}
             row_meta = cand_df[cand_df["symbol"].astype(str) == sym]
             if not row_meta.empty:
-                for col in ["pct_1w", "pct_1m", "rel_volume", "revenueGrowth", "earningsQuarterlyGrowth", "pegRatio", "trailingPE", "sector", "industry"]:
+                for col in ["pct_1w", "pct_1m", "rel_volume", "revenueGrowth", "earningsQuarterlyGrowth", "pegRatio", "trailingPE", "sector", "industry", "screener_rank"]:
                     if col in row_meta.columns:
                         meta[col] = row_meta.iloc[0].get(col)
             rec = {"date": date, "symbol": sym, "fwd_ret": fwd_ret}
@@ -112,7 +115,7 @@ def build_dataset(cand_df: pd.DataFrame, symbols: List[str], lookback: int, retu
 
 
 def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str]]:
-    drop_cols = ["date", "symbol", "fwd_ret", "sector", "industry"]
+    drop_cols = ["date", "symbol", "fwd_ret", "sector", "industry", "screener_rank"]
     feat_cols = [c for c in df.columns if c not in drop_cols]
     # Note: fillna handled by enhance_features, but add safety check
     X = df[feat_cols].fillna(0.0)
@@ -171,6 +174,41 @@ def tune_model(model, X_train: pd.DataFrame, y_train: np.ndarray, model_config: 
     return search.best_estimator_
 
 
+def save_actual_vs_predicted_chart(eval_df: pd.DataFrame, out_path: Path) -> Path:
+    """Save an actual-vs-predicted return scatter plot to disk."""
+    plot_df = pd.DataFrame(
+        {
+            "actual_ret": pd.to_numeric(eval_df.get("actual_ret", pd.Series(dtype=float)), errors="coerce"),
+            "pred_ret": pd.to_numeric(eval_df.get("pred_ret", pd.Series(dtype=float)), errors="coerce"),
+        }
+    ).dropna()
+
+    if plot_df.empty:
+        raise ValueError("No actual/predicted values available to plot")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(plot_df["actual_ret"], plot_df["pred_ret"], alpha=0.75)
+
+    min_val = min(plot_df["actual_ret"].min(), plot_df["pred_ret"].min())
+    max_val = max(plot_df["actual_ret"].max(), plot_df["pred_ret"].max())
+    span = max(max_val - min_val, 1e-6)
+    ax.plot([min_val - 0.05 * span, max_val + 0.05 * span], [min_val - 0.05 * span, max_val + 0.05 * span], "r--", linewidth=1, label="Ideal fit")
+
+    ax.set_xlabel("Actual forward return")
+    ax.set_ylabel("Predicted forward return")
+    ax.set_title("Actual vs Predicted Returns")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+    return out_path
+
+
 def compute_feature_importance(model, feat_cols: List[str]) -> pd.DataFrame:
     """Return a sorted feature-importance table for the fitted model."""
     if hasattr(model, "feature_importances_"):
@@ -221,6 +259,12 @@ def train_and_evaluate(df: pd.DataFrame, return_days: int, use_enhanced_features
 
     print(f"Eval (return_days={return_days}): Spearman IC={ic:.4f}, R2={r2:.4f}, MAE={mae:.6f}")
     print(f"Number of features used: {len(feat_cols)}")
+
+    eval_df = pd.DataFrame({"actual_ret": y_test, "pred_ret": pred})
+    repo_root = Path(__file__).resolve().parents[3]
+    chart_path = repo_root / "reports" / "screener_results" / f"actual_vs_predicted_{datetime.now(timezone.utc).strftime('%Y%m%d')}.png"
+    save_actual_vs_predicted_chart(eval_df, chart_path)
+    print(f"Wrote actual-vs-predicted chart to {chart_path}")
 
     fi = compute_feature_importance(model, feat_cols)
     if not fi.empty:
@@ -298,13 +342,26 @@ def score_latest(model, feat_cols: List[str], cand_df: pd.DataFrame, symbols: Li
     df = df.sort_values("pred_ret", ascending=False)
     
     # Add strategy attribution metadata
-    df["screener_rank"] = range(1, len(df) + 1)
+    df["prediction_rank"] = range(1, len(df) + 1)
     df["strategy_source"] = "predictive_model"
     if metrics:
         df["model_type"] = metrics.get("model_type", "unknown")
         df["model_r2_score"] = metrics.get("r2_score")
         df["model_spearman_ic"] = metrics.get("spearman_ic")
         df["model_mae"] = metrics.get("mae")
+    
+    # Reorder columns to put prediction_rank and screener_rank at the beginning
+    cols = df.columns.tolist()
+    rank_cols = []
+    if "prediction_rank" in cols:
+        rank_cols.append("prediction_rank")
+        cols.remove("prediction_rank")
+    if "screener_rank" in cols:
+        rank_cols.append("screener_rank")
+        cols.remove("screener_rank")
+    if rank_cols:
+        cols = rank_cols + cols
+        df = df[cols]
     
     return df
 

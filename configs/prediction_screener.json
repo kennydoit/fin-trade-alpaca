@@ -7,6 +7,7 @@
   "lookback": 180,
   "out": "reports/screener_results/predictions.csv",
   "versioned": false,
+  "include_short_term_positions": true,
   "model": {
     "type": "lightgbm",
     "n_estimators": 200,

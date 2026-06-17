@@ -474,21 +474,27 @@ def find_latest_screener_csv(repo_root: Path):
     return csvs_sorted[0]
 
 
-def pick_top_n_from_screener(csv_path: Path, n: int):
-    # Try common prediction/score fields (prefer avg_ret, pred_ret), fall back to pct_1w/pct_1m.
+def pick_top_n_from_screener(csv_path: Path, n: int, existing_symbols: set[str] | None = None):
+    """Return the top N symbols from a screener CSV.
+
+    Prefer the prediction score (`pred_ret`) because it reflects the ranked
+    model output. Fall back to `avg_ret` and other momentum fields only when
+    needed. Also skip symbols that are already held in the account.
+    """
     rows = []
+    existing = {s.strip().upper() for s in (existing_symbols or []) if s and str(s).strip()}
     try:
         with csv_path.open("r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for r in reader:
                 sym = (r.get("symbol") or "").strip().upper()
-                if not sym:
+                if not sym or sym in existing:
                     continue
                 # price fields: regularMarketPrice, close, eodprice
                 price = safe_float(r.get("regularMarketPrice") or r.get("close") or r.get("eodprice"))
-                # score fields prefer avg_ret, then pred_ret, then avg_pred, then pct_1w/pct_1m
+                # Prefer the model ranking score first, then historical average return.
                 score = None
-                for fld in ("avg_ret", "pred_ret", "avg_pred", "pct_1w", "pct_1m"):
+                for fld in ("pred_ret", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
                     val = safe_float(r.get(fld))
                     if val is not None:
                         score = val
@@ -497,11 +503,11 @@ def pick_top_n_from_screener(csv_path: Path, n: int):
     except Exception:
         return []
 
-    # filter out rows without score or price
     rows = [r for r in rows if r[2] is not None and r[1] is not None]
     if not rows:
         return []
-    rows_sorted = sorted(rows, key=lambda x: x[2], reverse=True)
+
+    rows_sorted = sorted(rows, key=lambda x: (x[2], x[0]), reverse=True)
     top = rows_sorted[:n]
     return [(r[0], r[1]) for r in top]
 
@@ -688,14 +694,17 @@ def log_strategy_summary(strategy_config: dict) -> None:
 
 def main() -> int:
     args = parse_args()
+    explicit_mode = "--mode" in sys.argv
+    explicit_dry_run = "--dry-run" in sys.argv
+
     try:
         strategy_config = load_strategy_config(Path(args.config))
         config_mode = (strategy_config.get("mode") or "").strip().lower()
-        if config_mode in {"paper", "live"}:
+        if config_mode in {"paper", "live"} and not explicit_mode:
             args.mode = config_mode
 
         config_dry_run = strategy_config.get("dry_run")
-        if isinstance(config_dry_run, bool):
+        if isinstance(config_dry_run, bool) and not explicit_dry_run:
             args.dry_run = config_dry_run
     except (FileNotFoundError, ValueError, json.JSONDecodeError):
         strategy_config = None
@@ -796,8 +805,15 @@ def main() -> int:
         if csv_path is None:
             print("Short-term requested but no screener CSV found in reports/screener_results. Skipping short-term allocation.")
         else:
+            existing_symbols = set()
+            if client is not None:
+                try:
+                    existing_symbols = {p.symbol.strip().upper() for p in client.get_all_positions()}
+                except Exception as ex:
+                    print(f"Unable to read existing positions for short-term filter: {ex}")
+
             n = int(n_assets)
-            picks = pick_top_n_from_screener(csv_path, n)
+            picks = pick_top_n_from_screener(csv_path, n, existing_symbols=existing_symbols)
             if not picks:
                 print(f"No valid picks found in screener {csv_path}. Skipping short-term allocation.")
             else:

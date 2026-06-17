@@ -156,8 +156,8 @@ def rank_rows(rows: List[Dict[str, Any]], out: Path) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8", newline="") as f:
         fieldnames = list(rows[0].keys()) if rows else []
-        extra = ["score_raw", "score_norm", "rank"] + list(norm_features[0].keys() if norm_features else [])
-        w = csv.DictWriter(f, fieldnames=fieldnames + extra)
+        extra = ["screener_rank", "score_raw", "score_norm"] + list(norm_features[0].keys() if norm_features else [])
+        w = csv.DictWriter(f, fieldnames=extra + fieldnames)
         w.writeheader()
         combined = []
         for i, r in enumerate(rows):
@@ -167,7 +167,7 @@ def rank_rows(rows: List[Dict[str, Any]], out: Path) -> Path:
             combined.append((scores_raw[i], scores_norm[i], new, norm_features[i]))
         combined.sort(key=lambda x: x[0], reverse=True)
         for rank, (_, _, new, nf) in enumerate(combined, start=1):
-            new["rank"] = rank
+            new["screener_rank"] = rank
             for k, v in nf.items():
                 new[k] = f"{v:.6f}"
             w.writerow(new)

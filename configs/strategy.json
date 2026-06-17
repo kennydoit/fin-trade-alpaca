@@ -18,11 +18,11 @@
     },
     "short_term": {
       "weight": 1.0,
-      "screener": "reports/screener_results/predictions_20260610.csv",
+      "screener": "reports/screener_results/predictions_20260615.csv",
       "number_of_assets": 3,
       "asset_weights": "equal",
       "stop_loss": -3.0,
-      "take_profit": 15.0
+      "take_profit": 10.0
     }
   }
   ,

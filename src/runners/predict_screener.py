@@ -7,13 +7,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Set
 
 import pandas as pd
 import numpy as np
+
+from alpaca.trading.client import TradingClient
 
 # Ensure the repo root is accessible for imports
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 # Import from our local src/yfinance/screener module
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fin_trade_alpaca.env_loader import load_environment_for_mode
 from yfinance.screener.predict_short_term import (
     find_latest_screener_file,
     build_dataset,
@@ -40,6 +44,7 @@ DEFAULT_PREDICTION_CONFIG: dict[str, Any] = {
     "lookback": 180,
     "out": None,
     "versioned": False,
+    "include_short_term_positions": True,
     "model": {
         "type": "lightgbm",
         "n_estimators": 200,
@@ -51,6 +56,71 @@ DEFAULT_PREDICTION_CONFIG: dict[str, Any] = {
     },
     "target": {"horizon_days": 5, "label_column": "fwd_ret"},
 }
+
+
+def resolve_credentials(mode: str) -> tuple[str | None, str | None, str | None, bool]:
+    """Resolve Alpaca credentials for the given mode (paper or live).
+    
+    Returns: (api_key, api_secret, oauth_token, paper)
+    """
+    if mode == "paper":
+        oauth_token = os.getenv("ALPACA_PAPER_OAUTH_TOKEN") or os.getenv("ALPACA_OAUTH_TOKEN")
+        api_key = os.getenv("ALPACA_PAPER_API_KEY") or os.getenv("ALPACA_API_KEY")
+        api_secret = os.getenv("ALPACA_PAPER_API_SECRET") or os.getenv("ALPACA_API_SECRET")
+        paper = True
+    else:
+        oauth_token = os.getenv("ALPACA_LIVE_OAUTH_TOKEN") or os.getenv("ALPACA_OAUTH_TOKEN")
+        api_key = os.getenv("ALPACA_LIVE_API_KEY") or os.getenv("ALPACA_INDIVIDUAL_API_KEY")
+        api_secret = os.getenv("ALPACA_LIVE_API_SECRET") or os.getenv("ALPACA_INDIVIDUAL_API_SECRET_KEY")
+        paper = False
+    
+    return api_key, api_secret, oauth_token, paper
+
+
+def fetch_short_term_positions() -> Set[str]:
+    """Fetch current short-term positions from both live and paper accounts.
+    
+    Returns a set of symbol strings (uppercase).
+    """
+    import copy
+    positions: Set[str] = set()
+    
+    # Save current environment to restore later
+    original_env = copy.copy(os.environ)
+    
+    for mode in ["paper", "live"]:
+        try:
+            # Restore original environment before loading mode-specific env
+            os.environ.clear()
+            os.environ.update(original_env)
+            
+            load_environment_for_mode(mode)
+            api_key, api_secret, oauth_token, paper = resolve_credentials(mode)
+            
+            if not oauth_token and (not api_key or not api_secret):
+                print(f"Skipping {mode} positions: credentials not found")
+                continue
+            
+            client = TradingClient(
+                api_key=api_key,
+                secret_key=api_secret,
+                oauth_token=oauth_token,
+                paper=paper,
+            )
+            
+            for pos in client.get_all_positions():
+                symbol = pos.symbol.strip().upper()
+                positions.add(symbol)
+                print(f"Found {mode} position: {symbol}")
+        
+        except Exception as ex:
+            print(f"Warning: Unable to fetch {mode} positions: {ex}")
+    
+    # Restore original environment
+    os.environ.clear()
+    os.environ.update(original_env)
+    
+    return positions
 
 
 def load_prediction_config(config_path: str | Path | None) -> dict[str, Any]:
@@ -123,21 +193,7 @@ def score_latest_local(model, feat_cols: list, cand_df: pd.DataFrame, symbols: L
     if 'avg_ret' not in df.columns and all(c in df.columns for c in ['ret_1d', 'ret_3d', 'ret_5d']):
         df['avg_ret'] = df[['ret_1d','ret_3d','ret_5d']].mean(axis=1)
     
-    # Sort and add strategy metadata
-    if 'pred_ret' in df.columns:
-        df = df.sort_values('pred_ret', ascending=False)
-    elif 'avg_ret' in df.columns:
-        df = df.sort_values('avg_ret', ascending=False)
-    
-    # Add strategy attribution metadata
-    df['screener_rank'] = range(1, len(df) + 1)
-    df['strategy_source'] = 'predictive_model'
-    if metrics:
-        df['model_type'] = metrics.get('model_type', 'unknown')
-        df['model_r2_score'] = metrics.get('r2_score')
-        df['model_spearman_ic'] = metrics.get('spearman_ic')
-        df['model_mae'] = metrics.get('mae')
-    
+    # score_latest already handles ranking and column ordering
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False)
     print(f'Wrote predictions to {out_path}')
@@ -170,8 +226,24 @@ def main():
     print(f'Using candidates file: {cand_file}')
     cand_df = pd.read_csv(cand_file)
     cand_df = filter_candidates(cand_df, runtime['sector'], runtime['industry'])
-    symbols = list(cand_df['symbol'].astype(str).unique())[: runtime['limit']]
-    print(f'Analyzing {len(symbols)} symbols (limit={runtime["limit"]})')
+    
+    # Always include current short-term positions from both accounts
+    short_term_positions: Set[str] = set()
+    if runtime.get('include_short_term_positions', True):
+        short_term_positions = fetch_short_term_positions()
+        if short_term_positions:
+            print(f"Found {len(short_term_positions)} short-term positions to include: {', '.join(sorted(short_term_positions))}")
+    
+    # Select symbols from filtered candidates (up to limit)
+    candidate_symbols = list(cand_df['symbol'].astype(str).str.upper().unique())
+    
+    # Ensure short-term positions are always included
+    symbols_from_screener = [s for s in candidate_symbols if s not in short_term_positions][: runtime['limit']]
+    
+    # Combine: positions + screener symbols (incremental count)
+    symbols = sorted(short_term_positions) + symbols_from_screener
+    
+    print(f'Analyzing {len(symbols)} symbols: {len(short_term_positions)} positions + {len(symbols_from_screener)} from screener (limit={runtime["limit"]})')
 
     df = build_dataset(cand_df, symbols, runtime['lookback'], runtime['return_days'])
     if df.empty:
