@@ -11,7 +11,8 @@ dependencies = [
 	"python-dotenv",
 	"pyyaml",
 	"requests",
-	"yfinance"
+	"yfinance",
+	"matplotlib"
 ]
 
 [project.optional-dependencies]

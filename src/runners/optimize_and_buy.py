@@ -19,6 +19,8 @@ from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest
 from fin_trade_alpaca.env_loader import load_environment_for_mode
 
 EASTERN_TZ = ZoneInfo("America/New_York")
@@ -512,11 +514,23 @@ def pick_top_n_from_screener(csv_path: Path, n: int, existing_symbols: set[str] 
     return [(r[0], r[1]) for r in top]
 
 
-def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run: bool) -> list[str]:
+def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run: bool, creds: ModeCredentials = None) -> list[str]:
     """orders: list of dicts with keys: symbol, notional, price, stop_pct, take_pct"""
     submitted = []
     if not orders:
         return submitted
+        
+    # Create data client for fetching current prices
+    data_client = None
+    if creds:
+        try:
+            data_client = StockHistoricalDataClient(
+                api_key=creds.api_key,
+                secret_key=creds.api_secret
+            )
+        except Exception as e:
+            print(f"  WARNING: Could not create data client: {e}")
+    
     print("Short-term order plan:")
     for o in orders:
         print(f"  BUY {o['symbol']}: ${o['notional']} with stop={o['stop_pct']}% take={o['take_pct']}%")
@@ -528,30 +542,54 @@ def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run:
     for o in orders:
         symbol = o["symbol"]
         notional = o["notional"]
-        price = o.get("price")
+        screener_price = o.get("price")
         stop_pct = float(o.get("stop_pct", 0.0))
         take_pct = float(o.get("take_pct", 0.0))
-        take_price = None
-        stop_price = None
         try:
-            if price is not None:
-                take_price = float(price) * (1.0 + take_pct / 100.0)
-                stop_price = float(price) * (1.0 + stop_pct / 100.0)
+            # Try to fetch current market price from Alpaca
+            current_price = screener_price
+            if data_client and screener_price:
+                try:
+                    request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                    quote = data_client.get_stock_latest_quote(request)
+                    if symbol in quote and quote[symbol].ask_price:
+                        current_price = float(quote[symbol].ask_price)
+                        print(f"  {symbol}: using live ask price ${current_price:.2f} (screener: ${screener_price:.2f})")
+                    else:
+                        print(f"  {symbol}: no live quote, using screener price ${screener_price:.2f}")
+                except Exception as e:
+                    print(f"  {symbol}: could not fetch live price ({e}), using screener price ${screener_price:.2f}")
+            
+            # Bracket orders require quantity, not notional
+            if current_price is None or current_price <= 0:
+                print(f"  WARNING {symbol}: price is None or invalid ({current_price}), skipping order")
+                continue
+            
+            # Calculate quantity from notional and current price
+            qty = float(notional) / float(current_price)
+            # Round prices to penny increments (no sub-penny pricing allowed)
+            take_price = round(float(current_price) * (1.0 + take_pct / 100.0), 2)
+            stop_price = round(float(current_price) * (1.0 + stop_pct / 100.0), 2)
+            
+            print(f"  {symbol}: qty={qty:.6f}, stop=${stop_price:.2f} ({stop_pct}%), take=${take_price:.2f} ({take_pct}%)")
 
-            tp = TakeProfitRequest(limit_price=take_price) if take_price is not None else None
-            sl = StopLossRequest(stop_price=stop_price) if stop_price is not None else None
-
+            # NOTE: Alpaca does NOT support bracket orders with fractional shares
+            # We must submit a simple order first, then add stop loss/take profit after fill
+            # For now, submit simple fractional order without protections
+            # TODO: Add post-fill monitoring to add stop loss and take profit orders
+            
             req = MarketOrderRequest(
                 symbol=symbol,
-                notional=float(notional),
+                qty=qty,
                 side=OrderSide.BUY,
                 time_in_force=TimeInForce.DAY,
-                take_profit=tp,
-                stop_loss=sl,
             )
             order = client.submit_order(req)
             submitted.append(order.id)
-            print(f"Submitted short-term {symbol} order id={order.id} notional=${notional}")
+            
+            print(f"✓ Submitted {symbol} order id={order.id} qty={qty:.6f}")
+            print(f"  ⚠️  Note: Stop loss/take profit will need to be added separately after fill")
+            print(f"     Target stop=${stop_price:.2f}, take=${take_price:.2f}")
         except APIError as ex:
             print(f"Short-term order failed for {symbol}: {ex}")
         except Exception as ex:
@@ -723,6 +761,7 @@ def main() -> int:
         return 2
 
     client = None
+    creds = None
     if args.simulate_cash is None:
         try:
             creds = resolve_credentials(args.mode)
@@ -842,7 +881,7 @@ def main() -> int:
                     if client is None and not args.dry_run:
                         print("No Alpaca client available to submit short-term orders. Use --simulate-cash or provide credentials.")
                         return 2
-                    short_order_ids = submit_short_term_orders(client, orders, args.dry_run)
+                    short_order_ids = submit_short_term_orders(client, orders, args.dry_run, creds)
                     # reduce spendable cash for the remaining allocations
                     spent = sum(Decimal(str(o["notional"])) for o in orders)
                     spendable_cash = (spendable_cash - spent).quantize(Decimal("0.01"), rounding=ROUND_DOWN)

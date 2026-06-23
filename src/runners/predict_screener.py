@@ -82,11 +82,10 @@ def fetch_short_term_positions() -> Set[str]:
     
     Returns a set of symbol strings (uppercase).
     """
-    import copy
     positions: Set[str] = set()
     
     # Save current environment to restore later
-    original_env = copy.copy(os.environ)
+    original_env = dict(os.environ)  # Use dict() instead of copy.copy()
     
     for mode in ["paper", "live"]:
         try:
@@ -179,12 +178,16 @@ def filter_candidates(df: pd.DataFrame, sector: str | None, industry: str | None
     return df
 
 
-def score_latest_local(model, feat_cols: list, cand_df: pd.DataFrame, symbols: List[str], return_days: int, out_path: Path, metrics: dict = None):
-    """Score latest prices using enhanced features from predict_short_term module."""
+def score_latest_local(model, feat_cols: list, cand_df: pd.DataFrame, symbols: List[str], return_days: int, out_path: Path, scaler=None, metrics: dict = None):
+    """Score latest prices using enhanced features from predict_short_term module.
+    
+    Args:
+        scaler: Fitted StandardScaler from training data (prevents data leakage)
+    """
     from yfinance.screener.predict_short_term import score_latest
     
     # Use the updated score_latest that handles enhanced features
-    df = score_latest(model, feat_cols, cand_df, symbols, return_days, metrics, use_enhanced_features=True)
+    df = score_latest(model, feat_cols, cand_df, symbols, return_days, scaler=scaler, metrics=metrics, use_enhanced_features=True)
     
     if df.empty:
         raise SystemExit('No rows to score')
@@ -250,7 +253,7 @@ def main():
         raise SystemExit('No training data constructed; try increasing lookback or limit')
 
     print(f'Constructed dataset with {len(df)} rows')
-    model, feat_cols, metrics, feature_importance = train_and_evaluate(
+    model, feat_cols, metrics, feature_importance, scaler = train_and_evaluate(
         df,
         runtime['return_days'],
         model_config=runtime.get('model', {}),
@@ -267,7 +270,7 @@ def main():
         feature_importance.to_csv(fi_path, index=False)
         print(f'Wrote feature importances to {fi_path}')
 
-    score_latest_local(model, feat_cols, cand_df, symbols, runtime['return_days'], out_path, metrics)
+    score_latest_local(model, feat_cols, cand_df, symbols, runtime['return_days'], out_path, scaler=scaler, metrics=metrics)
 
     if runtime['versioned']:
         ver = datetime.utcnow().strftime('%Y%m%dT%H%M%S')

@@ -1,0 +1,20 @@
+{
+  "candidates_file": null,
+  "sector": null,
+  "industry": null,
+  "limit": 200,
+  "return_days": 5,
+  "lookback": 180,
+  "out": null,
+  "versioned": false,
+  "include_short_term_positions": true,
+  "model": {
+    "type": "ridge",
+    "alpha": 1.0,
+    "random_state": 42
+  },
+  "target": {
+    "horizon_days": 5,
+    "label_column": "fwd_ret"
+  }
+}

@@ -25,6 +25,7 @@ except Exception:
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.preprocessing import StandardScaler
 from scipy.stats import spearmanr
 
 import yfinance as yf
@@ -114,34 +115,112 @@ def build_dataset(cand_df: pd.DataFrame, symbols: List[str], lookback: int, retu
     return df.dropna(subset=["fwd_ret"]) if not df.empty else df
 
 
-def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str]]:
+def prepare_features(df: pd.DataFrame, scaler=None, fit_scaler: bool = False, use_standardization: bool = False) -> tuple[pd.DataFrame, List[str], StandardScaler | None]:
+    """Prepare features with optional standardization.
+    
+    Args:
+        df: Input dataframe with features
+        scaler: Fitted StandardScaler to use for transformation. If None and fit_scaler=True, creates new scaler.
+        fit_scaler: If True, fits a new scaler on the data. Only set True for training data.
+        use_standardization: Whether to apply standardization (only needed for linear models, not trees)
+    
+    Returns:
+        Tuple of (transformed features, feature column names, fitted scaler or None)
+    """
     drop_cols = ["date", "symbol", "fwd_ret", "sector", "industry", "screener_rank"]
     feat_cols = [c for c in df.columns if c not in drop_cols]
     # Note: fillna handled by enhance_features, but add safety check
     X = df[feat_cols].fillna(0.0)
-    return X, feat_cols
+    
+    # Apply standardization only if requested (for linear models)
+    if use_standardization:
+        if fit_scaler:
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            X = pd.DataFrame(X_scaled, columns=feat_cols, index=X.index)
+            return X, feat_cols, scaler
+        elif scaler is not None:
+            X_scaled = scaler.transform(X)
+            X = pd.DataFrame(X_scaled, columns=feat_cols, index=X.index)
+            return X, feat_cols, scaler
+    
+    return X, feat_cols, None
 
 
 def build_model(model_config: dict | None = None):
-    """Create the base estimator from config, optionally using LightGBM if available."""
+    """Create the base estimator from config.
+    
+    Returns:
+        Tuple of (model, model_type, needs_standardization)
+    """
     config = model_config or {}
     model_type = str(config.get("type", "lightgbm" if LGB_INSTALLED else "random_forest")).lower()
 
     if model_type == "lightgbm" and LGB_INSTALLED:
         model = lgb.LGBMRegressor(
-            n_estimators=int(config.get("n_estimators", 200)),
+            n_estimators=int(config.get("n_estimators", 300)),
             learning_rate=float(config.get("learning_rate", 0.05)),
+            max_depth=int(config.get("max_depth", 6)),
+            num_leaves=int(config.get("num_leaves", 31)),
+            min_child_samples=int(config.get("min_child_samples", 20)),
+            subsample=float(config.get("subsample", 0.8)),
+            colsample_bytree=float(config.get("colsample_bytree", 0.8)),
+            reg_alpha=float(config.get("reg_alpha", 0.1)),
+            reg_lambda=float(config.get("reg_lambda", 0.1)),
             random_state=int(config.get("random_state", 42)),
             n_jobs=int(config.get("n_jobs", -1)),
         )
-        return model, "lightgbm"
+        return model, "lightgbm", False
 
+    if model_type == "random_forest":
+        model = RandomForestRegressor(
+            n_estimators=int(config.get("n_estimators", 200)),
+            max_depth=int(config.get("max_depth", 10)),
+            min_samples_split=int(config.get("min_samples_split", 10)),
+            min_samples_leaf=int(config.get("min_samples_leaf", 5)),
+            max_features=config.get("max_features", "sqrt"),
+            random_state=int(config.get("random_state", 42)),
+            n_jobs=int(config.get("n_jobs", -1)),
+        )
+        return model, "random_forest", False
+    
+    # Linear models need standardization
+    from sklearn.linear_model import Ridge, Lasso, ElasticNet
+    
+    if model_type == "ridge":
+        model = Ridge(
+            alpha=float(config.get("alpha", 1.0)),
+            random_state=int(config.get("random_state", 42)),
+        )
+        return model, "ridge", True
+    
+    if model_type == "lasso":
+        model = Lasso(
+            alpha=float(config.get("alpha", 0.1)),
+            random_state=int(config.get("random_state", 42)),
+            max_iter=int(config.get("max_iter", 2000)),
+        )
+        return model, "lasso", True
+    
+    if model_type == "elasticnet":
+        model = ElasticNet(
+            alpha=float(config.get("alpha", 0.1)),
+            l1_ratio=float(config.get("l1_ratio", 0.5)),
+            random_state=int(config.get("random_state", 42)),
+            max_iter=int(config.get("max_iter", 2000)),
+        )
+        return model, "elasticnet", True
+    
+    # Default to random forest
     model = RandomForestRegressor(
-        n_estimators=int(config.get("n_estimators", 100)),
-        random_state=int(config.get("random_state", 42)),
-        n_jobs=int(config.get("n_jobs", -1)),
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=10,
+        min_samples_leaf=5,
+        random_state=42,
+        n_jobs=-1,
     )
-    return model, "random_forest"
+    return model, "random_forest", False
 
 
 def tune_model(model, X_train: pd.DataFrame, y_train: np.ndarray, model_config: dict | None = None):
@@ -240,14 +319,20 @@ def train_and_evaluate(df: pd.DataFrame, return_days: int, use_enhanced_features
     
     print(f"Train: {len(train)} rows, Test: {len(test)} rows")
     
-    X_train, feat_cols = prepare_features(train)
+    # Build model and check if it needs standardization
+    model, model_type, needs_standardization = build_model(model_config)
+    
+    # CRITICAL: Fit scaler on training data only to prevent data leakage
+    # Only standardize for linear models (Ridge, Lasso, ElasticNet)
+    X_train, feat_cols, scaler = prepare_features(train, fit_scaler=needs_standardization, use_standardization=needs_standardization)
     y_train = train["fwd_ret"].values
-    X_test, _ = prepare_features(test)
+    
+    # Transform test data using fitted scaler (no refitting)
+    X_test, _, _ = prepare_features(test, scaler=scaler, fit_scaler=False, use_standardization=needs_standardization)
     y_test = test["fwd_ret"].values
     
-    print(f"Training with {len(feat_cols)} features...")
-
-    model, model_type = build_model(model_config)
+    standardization_msg = " (standardized)" if needs_standardization else " (no standardization - tree model)"
+    print(f"Training {model_type} with {len(feat_cols)} features{standardization_msg}...")
     model = tune_model(model, X_train, y_train, model_config)
 
     model.fit(X_train, y_train)
@@ -279,12 +364,22 @@ def train_and_evaluate(df: pd.DataFrame, return_days: int, use_enhanced_features
         "n_features": len(feat_cols)
     }
 
-    return model, feat_cols, metrics, fi
+    return model, feat_cols, metrics, fi, scaler
 
 
-def score_latest(model, feat_cols: List[str], cand_df: pd.DataFrame, symbols: List[str], return_days: int, metrics: dict = None, use_enhanced_features: bool = True):
+def score_latest(model, feat_cols: List[str], cand_df: pd.DataFrame, symbols: List[str], return_days: int, scaler=None, metrics: dict = None, use_enhanced_features: bool = True):
     """
     Score latest prices for given symbols.
+    
+    Args:
+        model: Trained model for predictions
+        feat_cols: List of feature column names
+        cand_df: Candidate dataframe with symbol metadata
+        symbols: List of symbols to score
+        return_days: Forward return horizon
+        scaler: Fitted StandardScaler from training (CRITICAL: must be from training data only)
+        metrics: Optional model performance metrics
+        use_enhanced_features: Whether to apply enhanced feature engineering
     
     To properly compute enhanced features (lags, ranks, sector-relative), we need historical context.
     Build a mini-dataset with last 30 days, then extract latest predictions.
@@ -335,8 +430,10 @@ def score_latest(model, feat_cols: List[str], cand_df: pd.DataFrame, symbols: Li
     # Filter to only latest date
     df = df[df["date"] == latest_date].copy()
     
-    # Prepare features and predict
-    X = df[feat_cols].fillna(0.0)
+    # Prepare features with same scaler used in training (NO fitting here)
+    # use_standardization determined by whether scaler is provided
+    use_std = scaler is not None
+    X, _, _ = prepare_features(df, scaler=scaler, fit_scaler=False, use_standardization=use_std)
     preds = model.predict(X)
     df["pred_ret"] = preds
     df = df.sort_values("pred_ret", ascending=False)
