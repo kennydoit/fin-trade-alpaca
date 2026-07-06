@@ -28,15 +28,15 @@ python console.py
 - Updates position strategies (core/growth/short_term) in database
 - Based on strategy file definitions
 
-### 3. Run Prediction Screener
-- Executes prediction-based equity screening
-- Can use default or custom config file
-- Outputs ranked predictions to reports/screener_results/
-
-### 4. Run Growth Screener  
+### 3. Run Growth Screener (Equity)
 - Executes growth-based equity screening
 - Generates ranked candidate CSV files
 - Outputs to reports/screener_results/
+
+### 4. Run Prediction Screener
+- Executes prediction-based equity screening on screener candidates
+- Can use default or custom config file
+- Outputs ranked predictions to reports/screener_results/
 
 ### 5. View Portfolio
 - Shows database location and viewing instructions

@@ -41,20 +41,59 @@ def find_latest_screener_file(folder: Path) -> Path:
 
 
 def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFrame:
-    period = f"{lookback_days}d"
-    if hasattr(yf, "download"):
-        df = yf.download(symbols, period=period, interval="1d", progress=False, threads=True)
-        if isinstance(df, tuple):
-            df = df[0]
-        if "Adj Close" in df:
-            adj = df["Adj Close"].copy()
-        else:
-            adj = df["Close"].copy()
-        if isinstance(adj, pd.Series):
-            adj = adj.to_frame()
-        adj.columns = [c if isinstance(c, str) else c[1] for c in adj.columns]
-        return adj
+    """Download historical price data for symbols.
+    
+    Args:
+        symbols: List of stock symbols
+        lookback_days: Number of days of history to fetch
+    
+    Returns:
+        DataFrame with adjusted close prices, empty DataFrame if download fails
+    """
+    # Use more appropriate period formats for yfinance
+    if lookback_days <= 60:
+        period = f"{lookback_days}d"
+    elif lookback_days <= 365:
+        period = f"{int(lookback_days/30)}mo"
+    elif lookback_days <= 730:
+        period = "2y"
+    else:
+        period = "5y"
+    
+    try:
+        if hasattr(yf, "download"):
+            df = yf.download(symbols, period=period, interval="1d", progress=False, threads=True, group_by='column')
+            if isinstance(df, tuple):
+                df = df[0]
+            
+            if df.empty:
+                print(f"WARNING: yfinance.download returned empty DataFrame for period={period}")
+                return pd.DataFrame()
+            
+            if "Adj Close" in df:
+                adj = df["Adj Close"].copy()
+            elif "Close" in df:
+                adj = df["Close"].copy()
+            else:
+                print(f"WARNING: No Close or Adj Close columns found in downloaded data")
+                return pd.DataFrame()
+            
+            if isinstance(adj, pd.Series):
+                adj = adj.to_frame()
+            
+            # Handle multi-level column names from group_by='column'
+            if adj.columns.nlevels > 1:
+                adj.columns = adj.columns.get_level_values(-1)
+            
+            # Ensure column names are strings
+            adj.columns = [str(c) for c in adj.columns]
+            
+            return adj
+    except Exception as e:
+        print(f"ERROR in yfinance.download: {e}")
+        print(f"Falling back to individual ticker downloads...")
 
+    # Fallback: download individually
     cols = {}
     for s in symbols:
         try:
@@ -86,15 +125,55 @@ def make_technical_features(adj: pd.Series) -> pd.DataFrame:
 
 
 def build_dataset(cand_df: pd.DataFrame, symbols: List[str], lookback: int, return_days: int) -> pd.DataFrame:
+    """Build training dataset from historical price data.
+    
+    Args:
+        cand_df: Candidate dataframe with symbol metadata
+        symbols: List of symbols to process
+        lookback: Days of historical data to fetch
+        return_days: Forward return horizon
+    
+    Returns:
+        DataFrame with features and forward returns, or empty DataFrame if insufficient data
+    """
+    print(f"Downloading {lookback + return_days + 5} days of history for {len(symbols)} symbols...")
     adj = download_price_history(symbols, lookback + return_days + 5)
+    
+    if adj.empty:
+        print("WARNING: No price data downloaded. Check yfinance connectivity or symbol validity.")
+        return pd.DataFrame()
+    
+    print(f"Downloaded data for {len(adj.columns)} symbols, {len(adj)} trading days")
+    
+    symbols_with_data = set(adj.columns)
+    symbols_missing = set(symbols) - symbols_with_data
+    if symbols_missing:
+        print(f"WARNING: {len(symbols_missing)} symbols missing from download (may be delisted or invalid)")
+        if len(symbols_missing) <= 10:
+            print(f"  Missing: {', '.join(sorted(symbols_missing))}")
+    
     rows = []
+    symbols_processed = 0
+    symbols_skipped_short = 0
+    symbols_no_training_window = 0
+    
     for sym in symbols:
         if sym not in adj.columns:
             continue
         series = adj[sym].dropna()
         if len(series) < 30:
+            symbols_skipped_short += 1
             continue
+        
+        symbols_processed += 1
         tech = make_technical_features(series)
+        
+        # Check if we have enough data for training window
+        training_window_size = len(tech) - return_days - 30
+        if training_window_size <= 0:
+            symbols_no_training_window += 1
+            continue
+        
         for t_idx in range(30, len(tech) - return_days):
             date = tech.index[t_idx]
             feat_row = tech.iloc[t_idx].to_dict()
@@ -111,8 +190,20 @@ def build_dataset(cand_df: pd.DataFrame, symbols: List[str], lookback: int, retu
             rec.update({k: (v if v is not None else np.nan) for k, v in feat_row.items()})
             rec.update(meta)
             rows.append(rec)
+    
+    print(f"Processing summary:")
+    print(f"  - Symbols processed successfully: {symbols_processed}")
+    print(f"  - Skipped (< 30 days data): {symbols_skipped_short}")
+    print(f"  - Skipped (no training window): {symbols_no_training_window}")
+    print(f"  - Total training rows generated: {len(rows)}")
+    
     df = pd.DataFrame(rows)
-    return df.dropna(subset=["fwd_ret"]) if not df.empty else df
+    if not df.empty:
+        df_clean = df.dropna(subset=["fwd_ret"])
+        if len(df_clean) < len(df):
+            print(f"  - Rows dropped (NaN forward returns): {len(df) - len(df_clean)}")
+        return df_clean
+    return df
 
 
 def prepare_features(df: pd.DataFrame, scaler=None, fit_scaler: bool = False, use_standardization: bool = False) -> tuple[pd.DataFrame, List[str], StandardScaler | None]:

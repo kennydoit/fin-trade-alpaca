@@ -248,9 +248,38 @@ def main():
     
     print(f'Analyzing {len(symbols)} symbols: {len(short_term_positions)} positions + {len(symbols_from_screener)} from screener (limit={runtime["limit"]})')
 
-    df = build_dataset(cand_df, symbols, runtime['lookback'], runtime['return_days'])
+    # Try to build dataset with adaptive lookback fallback
+    df = pd.DataFrame()
+    lookback_attempts = [runtime['lookback'], 180, 90, 60]
+    
+    for attempt, lookback in enumerate(lookback_attempts):
+        if attempt > 0:
+            print(f"\nRetrying with shorter lookback: {lookback} days...")
+        
+        df = build_dataset(cand_df, symbols, lookback, runtime['return_days'])
+        
+        if not df.empty:
+            if attempt > 0:
+                print(f"✓ Successfully built dataset with {lookback}-day lookback")
+            break
+        
+        if attempt < len(lookback_attempts) - 1:
+            print(f"✗ Failed with {lookback}-day lookback, trying shorter period...")
+    
     if df.empty:
-        raise SystemExit('No training data constructed; try increasing lookback or limit')
+        print("\n" + "="*60)
+        print("ERROR: Unable to construct training data")
+        print("="*60)
+        print("\nPossible causes:")
+        print("  1. Symbols may be newly listed with insufficient history")
+        print("  2. yfinance download may have failed (check connectivity)")
+        print("  3. Date range may be too far in the future")
+        print("\nSuggestions:")
+        print("  - Check if symbols in screener CSV have valid price history")
+        print("  - Try running with fewer symbols (--limit 50)")
+        print("  - Verify yfinance is working: python -c 'import yfinance; print(yfinance.Ticker(\"AAPL\").history(period=\"1mo\"))'")
+        print("="*60)
+        raise SystemExit(1)
 
     print(f'Constructed dataset with {len(df)} rows')
     model, feat_cols, metrics, feature_importance, scaler = train_and_evaluate(
