@@ -70,27 +70,40 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
                 print(f"WARNING: yfinance.download returned empty DataFrame for period={period}")
                 return pd.DataFrame()
             
-            if "Adj Close" in df:
-                adj = df["Adj Close"].copy()
-            elif "Close" in df:
-                adj = df["Close"].copy()
+            # Handle both single-symbol (simple columns) and multi-symbol (MultiIndex) downloads
+            is_multiindex = hasattr(df.columns, 'nlevels') and df.columns.nlevels > 1
+            
+            if is_multiindex:
+                # For MultiIndex, check first level for metric names
+                metric_names = df.columns.get_level_values(0).unique()
+                if "Adj Close" in metric_names:
+                    adj = df["Adj Close"].copy()
+                elif "Close" in metric_names:
+                    adj = df["Close"].copy()
+                else:
+                    print(f"WARNING: No Close/Adj Close in metrics: {list(metric_names)}")
+                    return pd.DataFrame()
             else:
-                print(f"WARNING: No Close or Adj Close columns found. Columns: {list(df.columns[:10])}")
-                return pd.DataFrame()
+                # For simple columns, direct check
+                if "Adj Close" in df.columns:
+                    adj = df["Adj Close"].copy()
+                elif "Close" in df.columns:
+                    adj = df["Close"].copy()
+                else:
+                    print(f"WARNING: No Close or Adj Close found. Columns: {list(df.columns[:10])}")
+                    return pd.DataFrame()
             
             if isinstance(adj, pd.Series):
                 adj = adj.to_frame()
             
-            # Flatten MultiIndex columns to symbol names (last level)
-            if hasattr(adj.columns, 'nlevels') and adj.columns.nlevels > 1:
-                adj.columns = adj.columns.get_level_values(-1)
-            
-            # Ensure column names are strings
+            # Ensure column names are strings (already symbols for MultiIndex after extraction)
             adj.columns = [str(c) for c in adj.columns]
             
             return adj
     except Exception as e:
         print(f"ERROR in yfinance.download: {e}")
+        import traceback
+        traceback.print_exc()
         print(f"Falling back to individual ticker downloads...")
 
     # Fallback: download individually
