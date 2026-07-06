@@ -260,11 +260,11 @@ def main():
         
         if not df.empty:
             if attempt > 0:
-                print(f"✓ Successfully built dataset with {lookback}-day lookback")
+                print(f"[OK] Successfully built dataset with {lookback}-day lookback")
             break
         
         if attempt < len(lookback_attempts) - 1:
-            print(f"✗ Failed with {lookback}-day lookback, trying shorter period...")
+            print(f"[RETRY] Failed with {lookback}-day lookback, trying shorter period...")
     
     if df.empty:
         print("\n" + "="*60)

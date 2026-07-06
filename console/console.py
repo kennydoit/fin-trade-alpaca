@@ -1,4 +1,4 @@
-﻿"""Portfolio Management Console - Simple menu interface for common operations.
+"""Portfolio Management Console - Simple menu interface for common operations.
 
 Run this to access a menu of frequently used portfolio management tasks.
 
@@ -186,7 +186,7 @@ def display_prediction_report(stdout, repo_root):
     
     # Display model fit metrics
     if metrics:
-        print("\n📊 MODEL FIT METRICS:")
+        print("\n*** MODEL FIT METRICS ***")
         print("-" * 60)
         if 'model_type' in metrics:
             print(f"  Model Type:        {metrics['model_type']}")
@@ -196,11 +196,11 @@ def display_prediction_report(stdout, repo_root):
             ic_rating = "Excellent" if metrics['spearman_ic'] > 0.05 else "Good" if metrics['spearman_ic'] > 0.02 else "Fair"
             print(f"  Spearman IC:       {metrics['spearman_ic']:.4f} ({ic_rating})")
         if 'r2_score' in metrics:
-            print(f"  R² Score:          {metrics['r2_score']:.4f}")
+            print(f"  R2 Score:          {metrics['r2_score']:.4f}")
         if 'mae' in metrics:
             print(f"  Mean Abs Error:    {metrics['mae']:.6f}")
     else:
-        print("\n⚠️  Could not extract model metrics from output")
+        print("\n[WARNING] Could not extract model metrics from output")
     
     # Find and read the latest predictions CSV
     predictions_file = None
@@ -223,7 +223,7 @@ def display_prediction_report(stdout, repo_root):
     if predictions_file and predictions_file.exists():
         try:
             df = pd.read_csv(predictions_file)
-            print("\n🏆 TOP 10 PREDICTED ASSETS:")
+            print("\n*** TOP 10 PREDICTED ASSETS ***")
             print("-" * 60)
             
             # Select relevant columns for display
@@ -259,12 +259,12 @@ def display_prediction_report(stdout, repo_root):
             top10 = top10.rename(columns={k: v for k, v in rename_map.items() if k in top10.columns})
             
             print(top10.to_string(index=False))
-            print(f"\n📁 Full results: {predictions_file}")
+            print(f"\nFull results: {predictions_file}")
             print(f"   Total symbols analyzed: {len(df)}")
         except Exception as e:
-            print(f"\n⚠️  Could not read predictions file: {e}")
+            print(f"\n[WARNING] Could not read predictions file: {e}")
     else:
-        print("\n⚠️  Predictions file not found")
+        print("\n[WARNING] Predictions file not found")
     
     print("\n" + "="*60)
 

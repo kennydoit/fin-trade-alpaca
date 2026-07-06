@@ -62,7 +62,7 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
     
     try:
         if hasattr(yf, "download"):
-            df = yf.download(symbols, period=period, interval="1d", progress=False, threads=True, group_by='column')
+            df = yf.download(symbols, period=period, interval="1d", progress=False, threads=True)
             if isinstance(df, tuple):
                 df = df[0]
             
@@ -75,14 +75,14 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
             elif "Close" in df:
                 adj = df["Close"].copy()
             else:
-                print(f"WARNING: No Close or Adj Close columns found in downloaded data")
+                print(f"WARNING: No Close or Adj Close columns found. Columns: {list(df.columns[:10])}")
                 return pd.DataFrame()
             
             if isinstance(adj, pd.Series):
                 adj = adj.to_frame()
             
-            # Handle multi-level column names from group_by='column'
-            if adj.columns.nlevels > 1:
+            # Flatten MultiIndex columns to symbol names (last level)
+            if hasattr(adj.columns, 'nlevels') and adj.columns.nlevels > 1:
                 adj.columns = adj.columns.get_level_values(-1)
             
             # Ensure column names are strings
