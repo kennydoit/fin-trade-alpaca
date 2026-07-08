@@ -10,6 +10,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 
+# DEBUG: Print when this module is loaded to verify we're using the right file
+print(f"[MODULE LOAD] predict_short_term.py loaded from: {Path(__file__).resolve()}")
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -30,7 +33,7 @@ from scipy.stats import spearmanr
 
 import yfinance as yf
 
-from .enhanced_features import enhance_features
+from .enhanced_features import enhance_features, enhance_features_train, enhance_features_test
 
 
 def find_latest_screener_file(folder: Path) -> Path:
@@ -62,9 +65,12 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
     
     try:
         if hasattr(yf, "download"):
+            print(f"DEBUG: Downloading with period={period}, num_symbols={len(symbols)}")
             df = yf.download(symbols, period=period, interval="1d", progress=False, threads=True)
             if isinstance(df, tuple):
                 df = df[0]
+            
+            print(f"DEBUG: Downloaded df.shape={df.shape}, df.empty={df.empty}")
             
             if df.empty:
                 print(f"WARNING: yfinance.download returned empty DataFrame for period={period}")
@@ -72,10 +78,12 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
             
             # Handle both single-symbol (simple columns) and multi-symbol (MultiIndex) downloads
             is_multiindex = hasattr(df.columns, 'nlevels') and df.columns.nlevels > 1
+            print(f"DEBUG: is_multiindex={is_multiindex}, nlevels={df.columns.nlevels if hasattr(df.columns, 'nlevels') else 'N/A'}")
             
             if is_multiindex:
                 # For MultiIndex, check first level for metric names
                 metric_names = df.columns.get_level_values(0).unique()
+                print(f"DEBUG: MultiIndex metric_names={list(metric_names)}")
                 if "Adj Close" in metric_names:
                     adj = df["Adj Close"].copy()
                 elif "Close" in metric_names:
@@ -85,6 +93,7 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
                     return pd.DataFrame()
             else:
                 # For simple columns, direct check
+                print(f"DEBUG: Simple columns={list(df.columns[:5])}")
                 if "Adj Close" in df.columns:
                     adj = df["Adj Close"].copy()
                 elif "Close" in df.columns:
@@ -93,11 +102,16 @@ def download_price_history(symbols: List[str], lookback_days: int) -> pd.DataFra
                     print(f"WARNING: No Close or Adj Close found. Columns: {list(df.columns[:10])}")
                     return pd.DataFrame()
             
+            print(f"DEBUG: Extracted adj.shape={adj.shape}")
+            
             if isinstance(adj, pd.Series):
                 adj = adj.to_frame()
             
             # Ensure column names are strings (already symbols for MultiIndex after extraction)
             adj.columns = [str(c) for c in adj.columns]
+            
+            print(f"DEBUG: Returning adj with columns={list(adj.columns[:10])}")
+            return adj
             
             return adj
     except Exception as e:
@@ -219,6 +233,33 @@ def build_dataset(cand_df: pd.DataFrame, symbols: List[str], lookback: int, retu
     return df
 
 
+def compute_excess_return_target(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert raw forward returns into a cross-sectional rank target.
+
+    The screener is fundamentally a ranking problem, so the model should learn to
+    rank assets relative to one another within each date rather than predict raw
+    return magnitudes. This makes the target more stable and better aligned with
+    the use case.
+    """
+    df = df.copy()
+    if "fwd_ret" not in df.columns:
+        return df
+
+    # Remove common date-level and sector-level effects first
+    date_median = df.groupby("date")["fwd_ret"].transform("median")
+    if "sector" in df.columns:
+        sector_median = df.groupby(["date", "sector"])["fwd_ret"].transform("median")
+        excess_ret = df["fwd_ret"] - sector_median.fillna(date_median)
+    else:
+        excess_ret = df["fwd_ret"] - date_median
+
+    # Rank within each date so the target is a stable percentile score in [0, 1]
+    target = excess_ret.groupby(df["date"]).rank(pct=True).astype(float)
+    df["fwd_ret_target"] = target.fillna(0.5)
+    df = df.dropna(subset=["fwd_ret", "fwd_ret_target"])
+    return df
+
+
 def prepare_features(df: pd.DataFrame, scaler=None, fit_scaler: bool = False, use_standardization: bool = False) -> tuple[pd.DataFrame, List[str], StandardScaler | None]:
     """Prepare features with optional standardization.
     
@@ -231,7 +272,7 @@ def prepare_features(df: pd.DataFrame, scaler=None, fit_scaler: bool = False, us
     Returns:
         Tuple of (transformed features, feature column names, fitted scaler or None)
     """
-    drop_cols = ["date", "symbol", "fwd_ret", "sector", "industry", "screener_rank"]
+    drop_cols = ["date", "symbol", "fwd_ret", "fwd_ret_target", "sector", "industry", "screener_rank"]
     feat_cols = [c for c in df.columns if c not in drop_cols]
     # Note: fillna handled by enhance_features, but add safety check
     X = df[feat_cols].fillna(0.0)
@@ -408,20 +449,32 @@ def compute_feature_importance(model, feat_cols: List[str]) -> pd.DataFrame:
 def train_and_evaluate(df: pd.DataFrame, return_days: int, use_enhanced_features: bool = True, model_config: dict | None = None):
     print(f"Building dataset with {len(df)} rows...")
     
-    # Apply enhanced feature engineering
-    if use_enhanced_features:
-        df = enhance_features(df, add_sector_features=("sector" in df.columns))
+    # Convert the target into a cross-sectional excess-return label for better alpha learning
+    df = compute_excess_return_target(df.sort_values("date"))
     
+    # CRITICAL FIX: Split train/test BEFORE feature engineering to prevent data leakage
     df = df.sort_values("date")
     unique_dates = sorted(df["date"].unique())
     if len(unique_dates) < 60:
         split_date = unique_dates[int(len(unique_dates) * 0.7)]
     else:
         split_date = unique_dates[-30]
-    train = df[df["date"] <= split_date]
-    test = df[df["date"] > split_date]
+    
+    # Split first
+    train = df[df["date"] <= split_date].copy()
+    test = df[df["date"] > split_date].copy()
+    train = train.dropna(subset=["fwd_ret_target"])
+    test = test.dropna(subset=["fwd_ret_target"])
     
     print(f"Train: {len(train)} rows, Test: {len(test)} rows")
+    
+    # Apply enhanced feature engineering separately to avoid leakage
+    # Train set: compute statistics and apply transformations
+    # Test set: apply transformations using train statistics only
+    if use_enhanced_features:
+        train, train_stats = enhance_features_train(train, add_sector_features=("sector" in df.columns))
+        test = enhance_features_test(test, train_stats, add_sector_features=("sector" in df.columns))
+        print(f"After feature engineering - Train: {len(train)} rows, Test: {len(test)} rows")
     
     # Build model and check if it needs standardization
     model, model_type, needs_standardization = build_model(model_config)
@@ -429,14 +482,14 @@ def train_and_evaluate(df: pd.DataFrame, return_days: int, use_enhanced_features
     # CRITICAL: Fit scaler on training data only to prevent data leakage
     # Only standardize for linear models (Ridge, Lasso, ElasticNet)
     X_train, feat_cols, scaler = prepare_features(train, fit_scaler=needs_standardization, use_standardization=needs_standardization)
-    y_train = train["fwd_ret"].values
+    y_train = train["fwd_ret_target"].values
     
     # Transform test data using fitted scaler (no refitting)
     X_test, _, _ = prepare_features(test, scaler=scaler, fit_scaler=False, use_standardization=needs_standardization)
-    y_test = test["fwd_ret"].values
+    y_test = test["fwd_ret_target"].values
     
     standardization_msg = " (standardized)" if needs_standardization else " (no standardization - tree model)"
-    print(f"Training {model_type} with {len(feat_cols)} features{standardization_msg}...")
+    print(f"Training {model_type} with {len(feat_cols)} features{standardization_msg} using excess-return target...")
     model = tune_model(model, X_train, y_train, model_config)
 
     model.fit(X_train, y_train)
@@ -447,6 +500,7 @@ def train_and_evaluate(df: pd.DataFrame, return_days: int, use_enhanced_features
     mae = mean_absolute_error(y_test, pred)
 
     print(f"Eval (return_days={return_days}): Spearman IC={ic:.4f}, R2={r2:.4f}, MAE={mae:.6f}")
+    print(f"Target is cross-sectional excess return vs sector/date median")
     print(f"Number of features used: {len(feat_cols)}")
 
     eval_df = pd.DataFrame({"actual_ret": y_test, "pred_ret": pred})

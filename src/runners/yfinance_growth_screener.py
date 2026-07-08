@@ -345,9 +345,15 @@ def parse_csv_list(value: Optional[Any]) -> List[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
-def filter_candidates(rows: List[Dict[str, Any]], sectors: List[str], industry: Optional[str], min_avg_volume: Optional[int], min_market_cap: Optional[float], min_eod_price: Optional[float], max_eod_price: Optional[float]) -> List[Dict[str, Any]]:
+def filter_candidates(rows: List[Dict[str, Any]], sectors: List[str], industries: Optional[str | List[str]], min_avg_volume: Optional[int], min_market_cap: Optional[float], min_eod_price: Optional[float], max_eod_price: Optional[float]) -> List[Dict[str, Any]]:
     filtered = []
     sector_set = {s.lower() for s in sectors}
+    normalized_industries = []
+    if isinstance(industries, str):
+        normalized_industries = [item.strip().lower() for item in industries.split(",") if item.strip()]
+    elif industries:
+        normalized_industries = [str(item).strip().lower() for item in industries if str(item).strip()]
+
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -358,8 +364,8 @@ def filter_candidates(rows: List[Dict[str, Any]], sectors: List[str], industry: 
                 continue
 
         row_industry = str(row.get("industry") or "").strip().lower()
-        if industry and row_industry:
-            if industry.lower() not in row_industry:
+        if normalized_industries and row_industry:
+            if not any(ind.lower() in row_industry for ind in normalized_industries):
                 continue
 
         if min_avg_volume is not None:
@@ -393,7 +399,7 @@ def main():
     p.add_argument("--limit", type=int, default=None, help="maximum number of candidates to fetch")
     p.add_argument("--sector", default=None, help="single sector filter (e.g., Technology)")
     p.add_argument("--sectors", default=None, help="comma-separated sector filters (e.g., Technology,Healthcare)")
-    p.add_argument("--industry", default=None, help="industry filter")
+    p.add_argument("--industry", default=None, help="comma-separated industry filters (e.g., Software,Biotechnology)")
     p.add_argument("--min-avg-volume", type=int, default=None, help="minimum average daily volume")
     p.add_argument("--min-market-cap", type=float, default=None, help="minimum market cap")
     p.add_argument("--min-eod-price", type=float, default=None, help="minimum eod price")
@@ -416,6 +422,8 @@ def main():
 
     sectors = parse_csv_list(args.sectors or config.get("sectors") or args.sector or config.get("sector"))
     industry = args.industry if args.industry is not None else config.get("industry")
+    if isinstance(industry, list):
+        industry = ",".join(str(item) for item in industry if str(item).strip())
     min_avg_volume = args.min_avg_volume if args.min_avg_volume is not None else config.get("min_avg_volume")
     min_market_cap = args.min_market_cap if args.min_market_cap is not None else config.get("min_market_cap")
     min_eod_price = args.min_eod_price if args.min_eod_price is not None else config.get("min_eod_price")

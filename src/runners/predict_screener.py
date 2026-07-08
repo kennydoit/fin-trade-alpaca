@@ -18,13 +18,19 @@ import numpy as np
 
 from alpaca.trading.client import TradingClient
 
+# DEBUG: Show what we're importing from
+print(f"[RUNNER] Python executable: {sys.executable}")
+print(f"[RUNNER] sys.path[0:3]: {sys.path[:3]}")
+print(f"[RUNNER] __file__: {Path(__file__).resolve()}")
+
 # Ensure the repo root is accessible for imports
 REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+SRC_ROOT = REPO_ROOT / 'src'
 
-# Import from our local src/yfinance/screener module
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Prioritize src/ directory over installed package
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+    print(f"[RUNNER] Inserted {SRC_ROOT} into sys.path")
 
 from fin_trade_alpaca.env_loader import load_environment_for_mode
 from yfinance.screener.predict_short_term import (

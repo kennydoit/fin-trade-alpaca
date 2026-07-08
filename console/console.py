@@ -9,6 +9,7 @@ Or from console directory:
     cd console
     python console.py
 """
+import json
 import os
 import re
 import subprocess
@@ -29,6 +30,49 @@ def print_header():
     print("=" * 60)
 
 
+def load_config(config_path):
+    """Load equity screener config from disk."""
+    if not config_path.exists():
+        return {}
+
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+
+    try:
+        config = pd.read_json(config_path)
+        if isinstance(config, pd.DataFrame):
+            if config.empty:
+                return {}
+            if len(config.index) == 1:
+                return {col: config.iloc[0][col] for col in config.columns}
+    except Exception:
+        pass
+
+    return {}
+
+
+def get_config_list(config, key, default=None):
+    """Return a config value as a list, even when it is a single string."""
+    if not isinstance(config, dict):
+        return list(default or [])
+
+    value = config.get(key, default)
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, tuple):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, str):
+        return [value]
+    if value is None:
+        return list(default or [])
+    return [str(value)]
+
+
 def print_menu():
     """Print main menu options."""
     print("\nAvailable Operations:")
@@ -36,8 +80,11 @@ def print_menu():
     print("  2. Update Asset Classifications (Strategy Files -> DB)")
     print("  3. Run Growth Screener (Equity)")
     print("  4. Run Prediction Screener")
-    print("  5. View Portfolio (SQLite Viewer)")
-    print("  6. Query Database (Interactive SQL)")
+    print("  5. Paper Trade using the latest prediction list (if short_term > 0)")
+    print("  6. Live Trade using the latest prediction list (if short_term > 0)")
+    print("  7. View Portfolio (SQLite Viewer)")
+    print("  8. Query Database (Interactive SQL)")
+    print("  9. Daily Portfolio Review (Exit positions based on rules)")
     print("  0. Exit")
     print()
 
@@ -299,16 +346,140 @@ def run_growth_screener():
     """Run growth screener."""
     print("\nGrowth Screener - generates ranked candidates CSV")
     print("Output: reports/screener_results/")
+    print("You can filter by one or more sectors and industries using comma-separated values.")
     
     confirm = input("\nProceed? (y/n): ").strip().lower()
     if confirm != "y":
         print("[CANCELLED]")
         return
-    
-    run_command(
-        [sys.executable, "src/runners/yfinance_growth_screener.py"],
-        "Growth screener"
+
+    repo_root = get_repo_root()
+    config_path = repo_root / "configs" / "equity_screener.json"
+    config = load_config(config_path)
+
+    sector_choices = get_config_list(
+        config,
+        "sector_choices",
+        get_config_list(config, "sectors", ["Technology", "Healthcare"]),
     )
+    selected_sectors = []
+    print("\nSector selection (y/n for each):")
+    for choice in sector_choices:
+        answer = input(f"  {choice}? ").strip().lower()
+        if answer in {"y", "yes"}:
+            selected_sectors.append(choice)
+    sectors = ",".join(selected_sectors)
+
+    industry_choices = get_config_list(config, "industry_choices", [])
+    selected_industries = []
+    if industry_choices:
+        print("\nIndustry selection (y/n for each):")
+        for choice in industry_choices:
+            answer = input(f"  {choice}? ").strip().lower()
+            if answer in {"y", "yes"}:
+                selected_industries.append(choice)
+        industries = ",".join(selected_industries)
+    else:
+        industries = input("Filter by industries (comma-separated, leave empty for all): ").strip()
+
+    cmd = [sys.executable, "src/runners/yfinance_growth_screener.py"]
+    if sectors:
+        cmd.extend(["--sectors", sectors])
+    if industries:
+        cmd.extend(["--industry", industries])
+    
+    run_command(cmd, "Growth screener")
+
+
+def run_trade(mode):
+    """Run the buy script for paper or live trading using the latest predictions."""
+    repo_root = get_repo_root()
+    latest_predictions = None
+    reports_dir = repo_root / "reports" / "screener_results"
+    if reports_dir.exists():
+        pred_files = sorted(reports_dir.glob("predictions_*.csv"))
+        if pred_files:
+            latest_predictions = pred_files[-1]
+
+    if not latest_predictions or not latest_predictions.exists():
+        print(f"\n[ERROR] No prediction file found in {reports_dir}")
+        print("Run the prediction screener first to generate a latest predictions CSV.")
+        return
+
+    strategy_config = repo_root / "configs" / "strategy.json"
+    if not strategy_config.exists():
+        strategy_config = repo_root / "configs" / "paper_clone_strategy.json"
+
+    print(f"\nUsing prediction file: {latest_predictions}")
+    print(f"Using strategy config: {strategy_config.relative_to(repo_root)}")
+
+    print(f"\nRun mode: {mode}")
+    run_mode = input("Run as dry run? (y/n, default=y): ").strip().lower()
+    dry_run = run_mode != "n"
+
+    cmd = [
+        sys.executable,
+        "src/runners/optimize_and_buy.py",
+        "--mode",
+        mode,
+        "--config",
+        str(strategy_config.relative_to(repo_root)),
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+
+    run_command(cmd, f"{mode.capitalize()} trade")
+
+
+def run_daily_portfolio_review():
+    """Run daily portfolio review to evaluate and exit positions."""
+    print("\nDaily Portfolio Review - Exit positions based on configurable rules")
+    print("\nSelect trading mode:")
+    print("  1. Paper account")
+    print("  2. Live account")
+    
+    mode_choice = input("\nSelect mode (1-2): ").strip()
+    mode_map = {"1": "paper", "2": "live"}
+    mode = mode_map.get(mode_choice)
+    
+    if not mode:
+        print("[ERROR] Invalid choice")
+        return
+    
+    print("\nSelect aggressiveness level:")
+    print("  1. Conservative (exit if rank > 20 OR P&L < -5%)")
+    print("  2. Moderate (exit if rank > 10 OR P&L < -3%)")
+    print("  3. Aggressive (exit if rank > 5 OR P&L < -2%)")
+    print("  4. Custom (specify your own thresholds)")
+    
+    agg_choice = input("\nSelect aggressiveness (1-4): ").strip()
+    agg_map = {"1": "conservative", "2": "moderate", "3": "aggressive", "4": "custom"}
+    aggressiveness = agg_map.get(agg_choice)
+    
+    if not aggressiveness:
+        print("[ERROR] Invalid choice")
+        return
+    
+    cmd = [sys.executable, "tools/daily_portfolio_review.py", "--mode", mode, "--aggressiveness", aggressiveness]
+    
+    if aggressiveness == "custom":
+        print("\nCustom thresholds (press Enter to skip any):")
+        min_rank = input("  Min prediction rank to hold (e.g., 15): ").strip()
+        stop_pct = input("  Stop loss % (e.g., -4.0): ").strip()
+        take_pct = input("  Take profit % (e.g., 8.0): ").strip()
+        
+        if min_rank:
+            cmd.extend(["--min-rank", min_rank])
+        if stop_pct:
+            cmd.extend(["--stop-pct", stop_pct])
+        if take_pct:
+            cmd.extend(["--take-pct", take_pct])
+    
+    dry_run = input("\nRun as dry run? (y/n, default=y): ").strip().lower()
+    if dry_run != "n":
+        cmd.append("--dry-run")
+    
+    run_command(cmd, f"Daily portfolio review ({mode})")
 
 
 def view_portfolio():
@@ -370,9 +541,15 @@ def main():
         elif choice == "4":
             run_prediction_screener()
         elif choice == "5":
-            view_portfolio()
+            run_trade("paper")
         elif choice == "6":
+            run_trade("live")
+        elif choice == "7":
+            view_portfolio()
+        elif choice == "8":
             query_database()
+        elif choice == "9":
+            run_daily_portfolio_review()
         else:
             print(f"\n[ERROR] Invalid option: {choice}")
         
