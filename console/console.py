@@ -346,7 +346,7 @@ def run_growth_screener():
     """Run growth screener."""
     print("\nGrowth Screener - generates ranked candidates CSV")
     print("Output: reports/screener_results/")
-    print("You can filter by one or more sectors and industries using comma-separated values.")
+    print("You can filter by sectors and/or industries.")
     
     confirm = input("\nProceed? (y/n): ").strip().lower()
     if confirm != "y":
@@ -357,30 +357,70 @@ def run_growth_screener():
     config_path = repo_root / "configs" / "equity_screener.json"
     config = load_config(config_path)
 
+    # First, ask about industry filtering
+    industry_choices = get_config_list(config, "industry_choices", [])
+    selected_industries = []
+    
+    if industry_choices:
+        use_industries = input("\nFilter by industries? (y/n): ").strip().lower()
+        if use_industries in {"y", "yes"}:
+            print("\nIndustry selection (y/n for each):")
+            for choice in industry_choices:
+                answer = input(f"  {choice}? ").strip().lower()
+                if answer in {"y", "yes"}:
+                    selected_industries.append(choice)
+    
+    # Determine valid sectors based on selected industries
     sector_choices = get_config_list(
         config,
         "sector_choices",
         get_config_list(config, "sectors", ["Technology", "Healthcare"]),
     )
-    selected_sectors = []
-    print("\nSector selection (y/n for each):")
-    for choice in sector_choices:
-        answer = input(f"  {choice}? ").strip().lower()
-        if answer in {"y", "yes"}:
-            selected_sectors.append(choice)
-    sectors = ",".join(selected_sectors)
-
-    industry_choices = get_config_list(config, "industry_choices", [])
-    selected_industries = []
-    if industry_choices:
-        print("\nIndustry selection (y/n for each):")
-        for choice in industry_choices:
+    
+    valid_sectors = set(sector_choices)
+    auto_sectors = set()
+    
+    if selected_industries:
+        # Get industry-to-sector mapping
+        industry_map = config.get("industry_to_sector_map", {})
+        auto_sectors = {industry_map.get(ind) for ind in selected_industries if industry_map.get(ind)}
+        
+        if auto_sectors:
+            print(f"\nIndustries selected map to sectors: {', '.join(sorted(auto_sectors))}")
+            use_auto = input("Use all matching sectors automatically? (y/n): ").strip().lower()
+            
+            if use_auto in {"y", "yes"}:
+                selected_sectors = list(auto_sectors)
+                print(f"✓ Auto-selected sectors: {', '.join(sorted(selected_sectors))}")
+            else:
+                # Show only relevant sectors
+                valid_sectors = auto_sectors
+                print("\nShowing only sectors matching your industry selections:")
+                selected_sectors = []
+                for choice in sorted(valid_sectors):
+                    answer = input(f"  {choice}? ").strip().lower()
+                    if answer in {"y", "yes"}:
+                        selected_sectors.append(choice)
+        else:
+            # No mapping found, ask for manual sector selection
+            print("\nNo sector mapping found for selected industries.")
+            selected_sectors = []
+            print("\nSector selection (y/n for each):")
+            for choice in sector_choices:
+                answer = input(f"  {choice}? ").strip().lower()
+                if answer in {"y", "yes"}:
+                    selected_sectors.append(choice)
+    else:
+        # No industries selected, show all sectors
+        selected_sectors = []
+        print("\nSector selection (y/n for each):")
+        for choice in sector_choices:
             answer = input(f"  {choice}? ").strip().lower()
             if answer in {"y", "yes"}:
-                selected_industries.append(choice)
-        industries = ",".join(selected_industries)
-    else:
-        industries = input("Filter by industries (comma-separated, leave empty for all): ").strip()
+                selected_sectors.append(choice)
+    
+    sectors = ",".join(selected_sectors) if selected_sectors else ""
+    industries = ",".join(selected_industries) if selected_industries else ""
 
     cmd = [sys.executable, "src/runners/yfinance_growth_screener.py"]
     if sectors:

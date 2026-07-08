@@ -462,7 +462,6 @@ def main():
             limit=effective_limit,
             sectors=sectors,
             sector=sectors[0] if len(sectors) == 1 else None,
-            industry=industry,
             min_eod_price=min_eod_price,
             max_eod_price=max_eod_price,
             min_avg_volume=min_avg_volume,
@@ -470,6 +469,7 @@ def main():
             region=config.get("region", "us"),
             exchange=config.get("exchange"),
         )
+        # Note: industry filtering is done via filter_candidates() after fetching
 
     try:
         from yfinance.screener.yfinance_equity_screener import enrich_results_with_info

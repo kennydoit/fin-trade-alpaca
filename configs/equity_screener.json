@@ -29,6 +29,17 @@
     "Computer Hardware",
     "Internet Content & Information"
   ],
+  "industry_to_sector_map": {
+    "Software - Infrastructure": "Technology",
+    "Software - Application": "Technology",
+    "Semiconductors": "Technology",
+    "Computer Hardware": "Technology",
+    "Internet Content & Information": "Communication Services",
+    "Biotechnology": "Healthcare",
+    "Drug Manufacturers - General": "Healthcare",
+    "Medical Devices": "Healthcare",
+    "Medical Instruments & Supplies": "Healthcare"
+  },
   "industry": null,
   "min_eod_price": 5,
   "max_eod_price": 75,
