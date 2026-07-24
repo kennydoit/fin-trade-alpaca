@@ -44,6 +44,36 @@ Fallback behavior:
 
 3. Customize allocations in `configs/strategy.json`.
 
+## Cloud Deployment (AWS)
+
+🚀 **NEW:** Run your trading system fully automated in the cloud with AWS Lambda!
+
+The trading system can be deployed to AWS for completely automated operation:
+- **Scheduled Executions**: Automatic daily screeners, trading, monitoring, and reviews
+- **Cost-Effective**: ~$7-10/month (serverless architecture)
+- **Email/SMS Notifications**: Get alerts and daily summaries automatically
+- **Fully Managed**: No servers to maintain, auto-scaling, built-in monitoring
+
+**Quick Start (20 minutes):**
+```bash
+cd aws
+./deploy.sh dev your-email@example.com +12345678900
+```
+
+**Documentation:**
+- **[QUICKSTART.md](aws/QUICKSTART.md)** - Quick deployment guide
+- **[README.md](aws/README.md)** - Complete AWS documentation
+- **[IMPLEMENTATION.md](aws/IMPLEMENTATION.md)** - Architecture and implementation details
+
+**What Gets Automated:**
+- 8:00 AM ET: Generate ML predictions and run equity screeners
+- 9:45 AM ET: Optimize portfolio and submit orders
+- Hourly: Monitor positions for stop-loss triggers
+- 4:15 PM ET: Daily review and exit logic
+- 5:00 PM ET: Send daily P&L summary email
+
+See [aws/](aws/) directory for complete cloud deployment instructions.
+
 ## Run Commands
 
 Ad-hoc paper run (real paper orders):

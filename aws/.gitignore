@@ -1,0 +1,18 @@
+# Build artifacts
+.aws-sam/
+layers/dependencies/python/
+
+# SAM build outputs
+samconfig.toml
+
+# Lambda package zips
+*.zip
+
+# Test payloads and responses
+test-payload.json
+response.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

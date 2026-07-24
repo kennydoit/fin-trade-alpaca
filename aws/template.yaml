@@ -1,0 +1,472 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Automated Trading System - fin-trade-alpaca
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+  
+  TradingEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Master switch to enable/disable trading (emergency override)
+  
+  NotificationEmail:
+    Type: String
+    Description: Email address for trading notifications
+  
+  NotificationPhone:
+    Type: String
+    Default: ''
+    Description: Phone number for SMS alerts (E.164 format, e.g. +1234567890)
+
+Globals:
+  Function:
+    Runtime: python3.14
+    Timeout: 900  # 15 minutes max
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        TRADING_ENABLED: !Ref TradingEnabled
+        S3_BUCKET: !Ref DataBucket
+        SNS_ALERT_TOPIC: !Ref AlertTopic
+        SNS_STATUS_TOPIC: !Ref StatusTopic
+    Layers:
+      - !Ref DependenciesLayer
+
+Resources:
+  # S3 Bucket for data storage
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'fin-trade-alpaca-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          - Id: ArchiveOldReports
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: STANDARD_IA
+
+  # SNS Topics for notifications
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'trading-alerts-${Environment}'
+      DisplayName: Trading System Critical Alerts
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+
+  AlertTopicSmsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasPhoneNumber
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: sms
+      Endpoint: !Ref NotificationPhone
+
+  StatusTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'trading-status-${Environment}'
+      DisplayName: Trading System Status Updates
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+
+  # Secrets for Alpaca API keys
+  AlpacaPaperApiKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'alpaca-paper-api-key-${Environment}'
+      Description: Alpaca Paper Trading API Key
+      SecretString: '{"key":"REPLACE_WITH_YOUR_KEY","secret":"REPLACE_WITH_YOUR_SECRET"}'
+
+  AlpacaLiveApiKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'alpaca-live-api-key-${Environment}'
+      Description: Alpaca Live Trading API Key
+      SecretString: '{"key":"REPLACE_WITH_YOUR_KEY","secret":"REPLACE_WITH_YOUR_SECRET"}'
+
+  # Lambda Layer for dependencies
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub 'trading-dependencies-${Environment}'
+      Description: Python dependencies (pandas, numpy, alpaca-py, yfinance)
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+        - python3.14
+    Metadata:
+      BuildMethod: python3.14
+
+  # Lambda execution role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'trading-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TradingSystemPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub '${DataBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref AlpacaPaperApiKey
+                  - !Ref AlpacaLiveApiKey
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref AlertTopic
+                  - !Ref StatusTopic
+
+  # Lambda Functions
+  PredictionScreenerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-prediction-screener-${Environment}'
+      CodeUri: functions/prediction_screener/
+      Handler: handler.lambda_handler
+      Description: Run ML prediction screener and save results to S3
+      Role: !GetAtt LambdaExecutionRole.Arn
+      ReservedConcurrentExecutions: 1
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          PREDICTION_CONFIG_PATH: configs/prediction_screener.json
+
+  EquityScreenerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-equity-screener-${Environment}'
+      CodeUri: functions/equity_screener/
+      Handler: handler.lambda_handler
+      Description: Run equity growth screener and save results to S3
+      Role: !GetAtt LambdaExecutionRole.Arn
+      ReservedConcurrentExecutions: 1
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          SCREENER_CONFIG_PATH: configs/equity_screener.json
+
+  OptimizeAndBuyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-optimize-buy-${Environment}'
+      CodeUri: functions/optimize_and_buy/
+      Handler: handler.lambda_handler
+      Description: Portfolio optimization and order submission
+      Role: !GetAtt LambdaExecutionRole.Arn
+      ReservedConcurrentExecutions: 1
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          STRATEGY_CONFIG_PATH: configs/strategy.json
+          ALPACA_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
+          ALPACA_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+
+  PortfolioMonitorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-portfolio-monitor-${Environment}'
+      CodeUri: functions/portfolio_monitor/
+      Handler: handler.lambda_handler
+      Description: Monitor positions and evaluate stop-loss triggers
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300  # 5 minutes sufficient for monitoring
+      ReservedConcurrentExecutions: 1
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          ALPACA_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
+          ALPACA_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+
+  AddProtectionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-add-protections-${Environment}'
+      CodeUri: functions/add_protections/
+      Handler: handler.lambda_handler
+      Description: Add stop-loss and take-profit orders to positions
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      ReservedConcurrentExecutions: 1
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          ALPACA_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
+          ALPACA_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+
+  DailyReviewFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-daily-review-${Environment}'
+      CodeUri: functions/daily_review/
+      Handler: handler.lambda_handler
+      Description: Daily portfolio review and exit logic
+      Role: !GetAtt LambdaExecutionRole.Arn
+      ReservedConcurrentExecutions: 1
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          ALPACA_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
+          ALPACA_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+
+  DailySummaryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-daily-summary-${Environment}'
+      CodeUri: functions/daily_summary/
+      Handler: handler.lambda_handler
+      Description: Generate daily portfolio summary and send email report
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          ALPACA_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
+          ALPACA_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+
+  # EventBridge Rules for scheduling
+  PredictionScreenerSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'prediction-screener-schedule-${Environment}'
+      Description: Run prediction screener daily at 8:00 AM ET weekdays
+      ScheduleExpression: 'cron(0 13 ? * MON-FRI *)'  # 8 AM ET = 1 PM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt PredictionScreenerFunction.Arn
+          Id: PredictionScreenerTarget
+          Input: '{"run_type": "scheduled"}'
+
+  PredictionScreenerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PredictionScreenerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PredictionScreenerSchedule.Arn
+
+  EquityScreenerSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'equity-screener-schedule-${Environment}'
+      Description: Run equity screener daily at 8:00 AM ET weekdays
+      ScheduleExpression: 'cron(0 13 ? * MON-FRI *)'  # 8 AM ET = 1 PM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt EquityScreenerFunction.Arn
+          Id: EquityScreenerTarget
+          Input: '{"run_type": "scheduled"}'
+
+  EquityScreenerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EquityScreenerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EquityScreenerSchedule.Arn
+
+  OptimizeAndBuySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'optimize-buy-schedule-${Environment}'
+      Description: Run optimize and buy at 9:45 AM ET weekdays
+      ScheduleExpression: 'cron(45 14 ? * MON-FRI *)'  # 9:45 AM ET = 2:45 PM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt OptimizeAndBuyFunction.Arn
+          Id: OptimizeAndBuyTarget
+          Input: '{"run_type": "scheduled", "mode": "paper"}'
+
+  OptimizeAndBuyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref OptimizeAndBuyFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt OptimizeAndBuySchedule.Arn
+
+  PortfolioMonitorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'portfolio-monitor-schedule-${Environment}'
+      Description: Monitor portfolio every hour during market hours
+      ScheduleExpression: 'cron(0 14-21 ? * MON-FRI *)'  # 9:30 AM - 4:30 PM ET = 2:30 PM - 9:30 PM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt PortfolioMonitorFunction.Arn
+          Id: PortfolioMonitorTarget
+          Input: '{"mode": "paper"}'
+
+  PortfolioMonitorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PortfolioMonitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PortfolioMonitorSchedule.Arn
+
+  DailyReviewSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'daily-review-schedule-${Environment}'
+      Description: Run daily portfolio review at 4:15 PM ET weekdays
+      ScheduleExpression: 'cron(15 21 ? * MON-FRI *)'  # 4:15 PM ET = 9:15 PM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt DailyReviewFunction.Arn
+          Id: DailyReviewTarget
+          Input: '{"mode": "paper", "aggressiveness": "moderate"}'
+
+  DailyReviewPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailyReviewFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyReviewSchedule.Arn
+
+  DailySummarySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'daily-summary-schedule-${Environment}'
+      Description: Generate daily summary at 5:00 PM ET weekdays
+      ScheduleExpression: 'cron(0 22 ? * MON-FRI *)'  # 5:00 PM ET = 10:00 PM UTC
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt DailySummaryFunction.Arn
+          Id: DailySummaryTarget
+          Input: '{"mode": "paper"}'
+
+  DailySummaryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailySummaryFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailySummarySchedule.Arn
+
+  # CloudWatch Alarms
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'trading-lambda-errors-${Environment}'
+      AlarmDescription: Alert when Lambda functions encounter errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+
+  BudgetAlarm:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub 'trading-system-budget-${Environment}'
+        BudgetLimit:
+          Amount: 20
+          Unit: USD
+        TimeUnit: MONTHLY
+        BudgetType: COST
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+
+Conditions:
+  HasPhoneNumber: !Not [!Equals [!Ref NotificationPhone, '']]
+
+Outputs:
+  DataBucketName:
+    Description: S3 bucket for data storage
+    Value: !Ref DataBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DataBucket'
+
+  AlertTopicArn:
+    Description: SNS topic for critical alerts
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertTopic'
+
+  StatusTopicArn:
+    Description: SNS topic for status updates
+    Value: !Ref StatusTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-StatusTopic'
+
+  PredictionScreenerFunctionArn:
+    Description: Prediction screener Lambda function
+    Value: !GetAtt PredictionScreenerFunction.Arn
+
+  OptimizeAndBuyFunctionArn:
+    Description: Optimize and buy Lambda function
+    Value: !GetAtt OptimizeAndBuyFunction.Arn
+
+  DashboardUrl:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:'

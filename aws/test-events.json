@@ -1,0 +1,134 @@
+{
+  "prediction_screener": {
+    "scheduled": {
+      "run_type": "scheduled",
+      "limit": 200,
+      "return_days": 5,
+      "lookback": 180
+    },
+    "adhoc_quick": {
+      "run_type": "adhoc",
+      "limit": 50,
+      "return_days": 5,
+      "lookback": 90
+    },
+    "adhoc_custom": {
+      "run_type": "adhoc",
+      "limit": 100,
+      "return_days": 10,
+      "lookback": 180
+    }
+  },
+  "equity_screener": {
+    "scheduled": {
+      "run_type": "scheduled"
+    },
+    "adhoc": {
+      "run_type": "adhoc",
+      "config_path": "configs/equity_screener.json"
+    }
+  },
+  "optimize_and_buy": {
+    "paper_scheduled": {
+      "run_type": "scheduled",
+      "mode": "paper"
+    },
+    "paper_adhoc": {
+      "run_type": "adhoc",
+      "mode": "paper",
+      "max_notional": 500
+    },
+    "paper_dry_run": {
+      "run_type": "adhoc",
+      "mode": "paper",
+      "dry_run": true
+    },
+    "live_scheduled": {
+      "run_type": "scheduled",
+      "mode": "live",
+      "confirm_live": true
+    },
+    "live_adhoc": {
+      "run_type": "adhoc",
+      "mode": "live",
+      "confirm_live": true,
+      "max_notional": 1000
+    }
+  },
+  "portfolio_monitor": {
+    "paper": {
+      "mode": "paper"
+    },
+    "live": {
+      "mode": "live"
+    }
+  },
+  "add_protections": {
+    "paper_all": {
+      "mode": "paper",
+      "stop_pct": -2.0,
+      "take_pct": 5.0,
+      "dry_run": false
+    },
+    "paper_specific": {
+      "mode": "paper",
+      "symbols": ["AAPL", "MSFT"],
+      "stop_pct": -1.5,
+      "take_pct": 3.0,
+      "dry_run": false
+    },
+    "paper_dry_run": {
+      "mode": "paper",
+      "dry_run": true
+    },
+    "live_all": {
+      "mode": "live",
+      "stop_pct": -2.0,
+      "take_pct": 5.0,
+      "dry_run": false
+    }
+  },
+  "daily_review": {
+    "paper_conservative": {
+      "mode": "paper",
+      "aggressiveness": "conservative",
+      "dry_run": false
+    },
+    "paper_moderate": {
+      "mode": "paper",
+      "aggressiveness": "moderate",
+      "dry_run": false
+    },
+    "paper_aggressive": {
+      "mode": "paper",
+      "aggressiveness": "aggressive",
+      "dry_run": false
+    },
+    "paper_custom": {
+      "mode": "paper",
+      "aggressiveness": "custom",
+      "min_prediction_rank": 15,
+      "stop_loss_pct": -4.0,
+      "take_profit_pct": 8.0,
+      "dry_run": false
+    },
+    "paper_dry_run": {
+      "mode": "paper",
+      "aggressiveness": "moderate",
+      "dry_run": true
+    },
+    "live_moderate": {
+      "mode": "live",
+      "aggressiveness": "moderate",
+      "dry_run": false
+    }
+  },
+  "daily_summary": {
+    "paper": {
+      "mode": "paper"
+    },
+    "live": {
+      "mode": "live"
+    }
+  }
+}
