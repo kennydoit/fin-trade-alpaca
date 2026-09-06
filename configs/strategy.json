@@ -2,6 +2,8 @@
   "mode": "paper",
   "dry_run": false,
   "total_investment": 1000,
+  "max_assets": 15,
+  "trading_frequency": "daily",
   "buckets": {
     "core": {
       "weight": 0,
@@ -18,16 +20,22 @@
     },
     "short_term": {
       "weight": 1.0,
-      "screener": "reports/screener_results/predictions_20260615.csv",
-      "number_of_assets": 3,
+      "screener": "/tmp/predictions.csv",
+      "number_of_assets": 10,
       "asset_weights": "equal",
-      "stop_loss": -1.0,
-      "take_profit": 2.0
+      "stop_loss": -2.5,
+      "take_profit": 6.0,
+      "model_quality_gate": {
+        "enabled": true,
+        "min_spearman_ic": 0.05,
+        "min_r2": -0.20,
+        "max_mae": 0.35,
+        "require_metrics": true
+      }
     }
-  }
-  ,
+  },
   "dynamic_tilt": {
-    "enabled": true,
+    "enabled": false,
     "basis": "pct_1w",
     "alpha": 0.40,
     "clip": [-50, 200],

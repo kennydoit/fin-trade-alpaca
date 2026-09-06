@@ -78,11 +78,11 @@ for func in prediction_screener equity_screener optimize_and_buy portfolio_monit
     mkdir -p "${FUNC_DIR}/src"
     
     # Copy entire src directory
-    cp -r ../../src/* "${FUNC_DIR}/src/"
+    cp -r ../src/* "${FUNC_DIR}/src/"
     
     # Copy configs
     mkdir -p "${FUNC_DIR}/configs"
-    cp -r ../../configs/* "${FUNC_DIR}/configs/" 2>/dev/null || true
+    cp -r ../configs/* "${FUNC_DIR}/configs/" 2>/dev/null || true
 done
 
 echo -e "${GREEN}✓ Function code prepared${NC}"
@@ -90,22 +90,18 @@ echo ""
 
 # Build Lambda layer for dependencies
 echo -e "${BLUE}Building Lambda layer...${NC}"
-cd layers/dependencies
-
-if [ ! -d "python" ]; then
-    mkdir -p python
-    pip install -r requirements.txt -t python/ --upgrade
-    echo -e "${GREEN}✓ Dependencies installed${NC}"
-else
-    echo -e "${GREEN}✓ Dependencies already installed (delete layers/dependencies/python to rebuild)${NC}"
-fi
-
-cd ../..
+# Remove any stale pre-built layer directory - sam build's own PythonPipBuilder
+# (using python3.12) will install requirements.txt directly. Leaving a
+# pre-populated layers/dependencies/python/ dir here causes SAM to nest it
+# inside its own build output (python/python/...), doubling the layer size
+# and blowing past Lambda's 250MB unzipped limit.
+rm -rf layers/dependencies/python
+echo -e "${GREEN}✓ Layer directory cleaned (sam build will install dependencies)${NC}"
 echo ""
 
 # Build SAM application
 echo -e "${BLUE}Building SAM application...${NC}"
-sam build --use-container
+sam build
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}ERROR: SAM build failed${NC}"
@@ -113,6 +109,24 @@ if [ $? -ne 0 ]; then
 fi
 
 echo -e "${GREEN}✓ Build successful${NC}"
+echo ""
+
+# Trim the built Lambda layer to stay under AWS's 250MB unzipped layer limit:
+# strip debug symbols from compiled extensions and remove test/cache bloat
+# that pip installs but Lambda never needs at runtime.
+LAYER_BUILD_DIR=".aws-sam/build/DependenciesLayer/python"
+if [ -d "$LAYER_BUILD_DIR" ]; then
+    echo -e "${BLUE}Trimming Lambda layer size...${NC}"
+    BEFORE_SIZE=$(du -sh "$LAYER_BUILD_DIR" | cut -f1)
+    find "$LAYER_BUILD_DIR" -name "*.so" -exec strip --strip-unneeded {} \; 2>/dev/null || true
+    find "$LAYER_BUILD_DIR" -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
+    find "$LAYER_BUILD_DIR" -type d -name "test" -exec rm -rf {} + 2>/dev/null || true
+    find "$LAYER_BUILD_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find "$LAYER_BUILD_DIR" -name "*.dist-info" -exec rm -f {}/RECORD \; 2>/dev/null || true
+    find "$LAYER_BUILD_DIR" -name "*.pyc" -delete 2>/dev/null || true
+    AFTER_SIZE=$(du -sh "$LAYER_BUILD_DIR" | cut -f1)
+    echo -e "${GREEN}✓ Layer trimmed: ${BEFORE_SIZE} -> ${AFTER_SIZE}${NC}"
+fi
 echo ""
 
 # Deploy SAM application

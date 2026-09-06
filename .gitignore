@@ -5,11 +5,39 @@ build/
 dist/
 wheels/
 *.egg-info
+
+# Environment files
 .env*
+
 # Virtual environments
 .venv
+venv/
+env/
+
+# Data files
 *.csv
 *.png
+
 # Portfolio database (contains sensitive position data)
 reports/portfolio_db/*.db
 reports/portfolio_db/*.db-journal
+
+# Temporary and test output files
+response*.json
+*.zip
+awscliv2.zip
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ruff cache
+.ruff_cache/

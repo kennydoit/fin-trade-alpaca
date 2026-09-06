@@ -45,6 +45,6 @@ def test_rank_rows_writes_rank_and_score_columns(tmp_path):
         data = list(csv.DictReader(fh))
 
     assert data[0]["symbol"] == "AAA"
-    assert data[0]["rank"] == "1"
+    assert data[0]["screener_rank"] == "1"
     assert "score_raw" in data[0]
     assert "score_norm" in data[0]

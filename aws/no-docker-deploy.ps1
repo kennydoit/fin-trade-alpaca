@@ -196,26 +196,17 @@ scikit-learn>=1.3.0
 
 Write-Success "Function code prepared"
 
-# Build Lambda Layer for dependencies
-Write-Info "Building dependencies layer (this may take a few minutes)..."
+# Ensure layer directory structure exists
+Write-Info "Preparing Lambda layer structure..."
 $layerDir = "layers\dependencies"
 New-Item -ItemType Directory -Force -Path "$layerDir\python" | Out-Null
-
-# Install dependencies to layer
-Write-Info "Installing Python packages to Lambda layer..."
-$ErrorActionPreference = "Continue"
-$pipOutput = pip install -r "$layerDir\requirements.txt" -t "$layerDir\python" --upgrade 2>&1
-$ErrorActionPreference = "Stop"
-if ($LASTEXITCODE -eq 0) {
-    Write-Success "Dependencies installed"
-} else {
-    Write-Info "Dependencies partially installed (will complete during build)"
-}
+Write-Success "Layer structure ready"
 
 # Step 4: Build (without Docker)
 Write-Step "Step 4/6: Building Lambda Functions"
-Write-Info "Building without Docker (using local Python)..."
-Write-Info "This may take 5-10 minutes..."
+Write-Info "Building with SAM (handles Python packages automatically)..."
+Write-Info "This may take 5-10 minutes as SAM downloads and installs all Python packages..."
+Write-Info "Note: SAM will build packages compatible with AWS Lambda (Amazon Linux 2)"
 
 # SAM build without containers
 sam build --parallel

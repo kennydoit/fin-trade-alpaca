@@ -1,0 +1,727 @@
+"""Short-term return prediction pipeline moved into the screener package.
+
+This keeps the prediction runner on the package-side implementation instead of
+relying on sandbox copies.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import UTC, datetime
+from pathlib import Path
+
+# DEBUG: Print when this module is loaded to verify we're using the right file
+print(f"[MODULE LOAD] predict_short_term.py loaded from: {Path(__file__).resolve()}")
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # type: ignore
+
+    MATPLOTLIB_INSTALLED = True
+except Exception:
+    MATPLOTLIB_INSTALLED = False
+
+import numpy as np
+import pandas as pd
+
+try:
+    import lightgbm as lgb  # type: ignore
+
+    LGB_INSTALLED = True
+except Exception:
+    LGB_INSTALLED = False
+
+from scipy.stats import spearmanr
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.preprocessing import StandardScaler
+
+import yfinance as yf
+
+from .enhanced_features import enhance_features, enhance_features_test, enhance_features_train
+
+
+def find_latest_screener_file(folder: Path) -> Path:
+    files = sorted(folder.glob("yfinance_screener_results_with_metrics*.csv"))
+    if not files:
+        raise SystemExit(f"No screener CSVs found in {folder}")
+    return files[-1]
+
+
+def download_price_history(symbols: list[str], lookback_days: int) -> pd.DataFrame:
+    """Download historical price data for symbols.
+
+    Args:
+        symbols: List of stock symbols
+        lookback_days: Number of days of history to fetch
+
+    Returns:
+        DataFrame with adjusted close prices, empty DataFrame if download fails
+    """
+    # Use more appropriate period formats for yfinance
+    if lookback_days <= 60:
+        period = f"{lookback_days}d"
+    elif lookback_days <= 365:
+        period = f"{int(lookback_days / 30)}mo"
+    elif lookback_days <= 730:
+        period = "2y"
+    else:
+        period = "5y"
+
+    try:
+        if hasattr(yf, "download"):
+            print(f"DEBUG: Downloading with period={period}, num_symbols={len(symbols)}")
+            df = yf.download(symbols, period=period, interval="1d", progress=False, threads=True)
+            if isinstance(df, tuple):
+                df = df[0]
+
+            print(f"DEBUG: Downloaded df.shape={df.shape}, df.empty={df.empty}")
+
+            if df.empty:
+                print(f"WARNING: yfinance.download returned empty DataFrame for period={period}")
+                return pd.DataFrame()
+
+            # Handle both single-symbol (simple columns) and multi-symbol (MultiIndex) downloads
+            is_multiindex = hasattr(df.columns, "nlevels") and df.columns.nlevels > 1
+            print(
+                f"DEBUG: is_multiindex={is_multiindex}, nlevels={df.columns.nlevels if hasattr(df.columns, 'nlevels') else 'N/A'}"
+            )
+
+            if is_multiindex:
+                # For MultiIndex, check first level for metric names
+                metric_names = df.columns.get_level_values(0).unique()
+                print(f"DEBUG: MultiIndex metric_names={list(metric_names)}")
+                if "Adj Close" in metric_names:
+                    adj = df["Adj Close"].copy()
+                elif "Close" in metric_names:
+                    adj = df["Close"].copy()
+                else:
+                    print(f"WARNING: No Close/Adj Close in metrics: {list(metric_names)}")
+                    return pd.DataFrame()
+            else:
+                # For simple columns, direct check
+                print(f"DEBUG: Simple columns={list(df.columns[:5])}")
+                if "Adj Close" in df.columns:
+                    adj = df["Adj Close"].copy()
+                elif "Close" in df.columns:
+                    adj = df["Close"].copy()
+                else:
+                    print(f"WARNING: No Close or Adj Close found. Columns: {list(df.columns[:10])}")
+                    return pd.DataFrame()
+
+            print(f"DEBUG: Extracted adj.shape={adj.shape}")
+
+            if isinstance(adj, pd.Series):
+                adj = adj.to_frame()
+
+            # Ensure column names are strings (already symbols for MultiIndex after extraction)
+            adj.columns = [str(c) for c in adj.columns]
+
+            print(f"DEBUG: Returning adj with columns={list(adj.columns[:10])}")
+            return adj
+
+            return adj
+    except Exception as e:
+        print(f"ERROR in yfinance.download: {e}")
+        import traceback
+
+        traceback.print_exc()
+        print("Falling back to individual ticker downloads...")
+
+    # Fallback: download individually
+    cols = {}
+    for s in symbols:
+        try:
+            t = yf.Ticker(s)
+            h = t.history(period=period, interval="1d", actions=False)
+            if h is None or h.empty:
+                continue
+            if "Adj Close" in h:
+                cols[s] = h["Adj Close"].rename(s)
+            else:
+                cols[s] = h["Close"].rename(s)
+        except Exception:
+            continue
+    if not cols:
+        return pd.DataFrame()
+    return pd.concat(cols.values(), axis=1)
+
+
+def make_technical_features(adj: pd.Series) -> pd.DataFrame:
+    df = pd.DataFrame({"close": adj})
+    df["ret_1d"] = df["close"].pct_change()
+    df["ret_3d"] = df["close"].pct_change(3)
+    df["ret_5d"] = df["close"].pct_change(5)
+    df["vol_10d"] = df["ret_1d"].rolling(10).std()
+    df["mom_20d"] = df["close"].pct_change(20)
+    df["sma_10"] = df["close"].rolling(10).mean()
+    df["price_sma10_z"] = (df["close"] - df["sma_10"]) / df["close"].rolling(60).std()
+    return df
+
+
+def build_dataset(cand_df: pd.DataFrame, symbols: list[str], lookback: int, return_days: int) -> pd.DataFrame:
+    """Build training dataset from historical price data.
+
+    Args:
+        cand_df: Candidate dataframe with symbol metadata
+        symbols: List of symbols to process
+        lookback: Days of historical data to fetch
+        return_days: Forward return horizon
+
+    Returns:
+        DataFrame with features and forward returns, or empty DataFrame if insufficient data
+    """
+    print(f"Downloading {lookback + return_days + 5} days of history for {len(symbols)} symbols...")
+    adj = download_price_history(symbols, lookback + return_days + 5)
+
+    if adj.empty:
+        print("WARNING: No price data downloaded. Check yfinance connectivity or symbol validity.")
+        return pd.DataFrame()
+
+    print(f"Downloaded data for {len(adj.columns)} symbols, {len(adj)} trading days")
+
+    symbols_with_data = set(adj.columns)
+    symbols_missing = set(symbols) - symbols_with_data
+    if symbols_missing:
+        print(f"WARNING: {len(symbols_missing)} symbols missing from download (may be delisted or invalid)")
+        if len(symbols_missing) <= 10:
+            print(f"  Missing: {', '.join(sorted(symbols_missing))}")
+
+    rows = []
+    symbols_processed = 0
+    symbols_skipped_short = 0
+    symbols_no_training_window = 0
+
+    for sym in symbols:
+        if sym not in adj.columns:
+            continue
+        series = adj[sym].dropna()
+        if len(series) < 30:
+            symbols_skipped_short += 1
+            continue
+
+        symbols_processed += 1
+        tech = make_technical_features(series)
+
+        # Check if we have enough data for training window
+        training_window_size = len(tech) - return_days - 30
+        if training_window_size <= 0:
+            symbols_no_training_window += 1
+            continue
+
+        for t_idx in range(30, len(tech) - return_days):
+            date = tech.index[t_idx]
+            feat_row = tech.iloc[t_idx].to_dict()
+            future_price = series.iloc[t_idx + return_days]
+            price = series.iloc[t_idx]
+            fwd_ret = (future_price / price) - 1.0
+            meta = {}
+            row_meta = cand_df[cand_df["symbol"].astype(str) == sym]
+            if not row_meta.empty:
+                for col in [
+                    "pct_1w",
+                    "pct_1m",
+                    "rel_volume",
+                    "revenueGrowth",
+                    "earningsQuarterlyGrowth",
+                    "pegRatio",
+                    "trailingPE",
+                    "sector",
+                    "industry",
+                    "screener_rank",
+                ]:
+                    if col in row_meta.columns:
+                        val = row_meta.iloc[0].get(col)
+                        # Replace infinity with NaN to prevent downstream errors
+                        if isinstance(val, (int, float)) and np.isinf(val):
+                            val = np.nan
+                        meta[col] = val
+            rec = {"date": date, "symbol": sym, "fwd_ret": fwd_ret}
+            rec.update({k: (v if v is not None else np.nan) for k, v in feat_row.items()})
+            rec.update(meta)
+            rows.append(rec)
+
+    print("Processing summary:")
+    print(f"  - Symbols processed successfully: {symbols_processed}")
+    print(f"  - Skipped (< 30 days data): {symbols_skipped_short}")
+    print(f"  - Skipped (no training window): {symbols_no_training_window}")
+    print(f"  - Total training rows generated: {len(rows)}")
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df_clean = df.dropna(subset=["fwd_ret"])
+        if len(df_clean) < len(df):
+            print(f"  - Rows dropped (NaN forward returns): {len(df) - len(df_clean)}")
+        return df_clean
+    return df
+
+
+def compute_excess_return_target(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert raw forward returns into a cross-sectional rank target.
+
+    The screener is fundamentally a ranking problem, so the model should learn to
+    rank assets relative to one another within each date rather than predict raw
+    return magnitudes. This makes the target more stable and better aligned with
+    the use case.
+    """
+    df = df.copy()
+    if "fwd_ret" not in df.columns:
+        return df
+
+    # Remove common date-level and sector-level effects first
+    date_median = df.groupby("date")["fwd_ret"].transform("median")
+    if "sector" in df.columns:
+        sector_median = df.groupby(["date", "sector"])["fwd_ret"].transform("median")
+        excess_ret = df["fwd_ret"] - sector_median.fillna(date_median)
+    else:
+        excess_ret = df["fwd_ret"] - date_median
+
+    # Rank within each date so the target is a stable percentile score in [0, 1]
+    target = excess_ret.groupby(df["date"]).rank(pct=True).astype(float)
+    df["fwd_ret_target"] = target.fillna(0.5)
+    df = df.dropna(subset=["fwd_ret", "fwd_ret_target"])
+    return df
+
+
+def prepare_features(
+    df: pd.DataFrame, scaler=None, fit_scaler: bool = False, use_standardization: bool = False
+) -> tuple[pd.DataFrame, list[str], StandardScaler | None]:
+    """Prepare features with optional standardization.
+
+    Args:
+        df: Input dataframe with features
+        scaler: Fitted StandardScaler to use for transformation. If None and fit_scaler=True, creates new scaler.
+        fit_scaler: If True, fits a new scaler on the data. Only set True for training data.
+        use_standardization: Whether to apply standardization (only needed for linear models, not trees)
+
+    Returns:
+        Tuple of (transformed features, feature column names, fitted scaler or None)
+    """
+    drop_cols = ["date", "symbol", "fwd_ret", "fwd_ret_target", "sector", "industry", "screener_rank"]
+    feat_cols = [c for c in df.columns if c not in drop_cols]
+    # Note: fillna handled by enhance_features, but add safety checks
+    X = df[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    # Apply standardization only if requested (for linear models)
+    if use_standardization:
+        if fit_scaler:
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            X = pd.DataFrame(X_scaled, columns=feat_cols, index=X.index)
+            return X, feat_cols, scaler
+        if scaler is not None:
+            X_scaled = scaler.transform(X)
+            X = pd.DataFrame(X_scaled, columns=feat_cols, index=X.index)
+            return X, feat_cols, scaler
+
+    return X, feat_cols, None
+
+
+def build_model(model_config: dict | None = None):
+    """Create the base estimator from config.
+
+    Returns:
+        Tuple of (model, model_type, needs_standardization)
+    """
+    config = model_config or {}
+    model_type = str(config.get("type", "lightgbm" if LGB_INSTALLED else "random_forest")).lower()
+
+    if model_type == "lightgbm" and LGB_INSTALLED:
+        model = lgb.LGBMRegressor(
+            n_estimators=int(config.get("n_estimators", 300)),
+            learning_rate=float(config.get("learning_rate", 0.05)),
+            max_depth=int(config.get("max_depth", 6)),
+            num_leaves=int(config.get("num_leaves", 31)),
+            min_child_samples=int(config.get("min_child_samples", 20)),
+            subsample=float(config.get("subsample", 0.8)),
+            colsample_bytree=float(config.get("colsample_bytree", 0.8)),
+            reg_alpha=float(config.get("reg_alpha", 0.1)),
+            reg_lambda=float(config.get("reg_lambda", 0.1)),
+            random_state=int(config.get("random_state", 42)),
+            n_jobs=int(config.get("n_jobs", -1)),
+        )
+        return model, "lightgbm", False
+
+    if model_type == "random_forest":
+        model = RandomForestRegressor(
+            n_estimators=int(config.get("n_estimators", 200)),
+            max_depth=int(config.get("max_depth", 10)),
+            min_samples_split=int(config.get("min_samples_split", 10)),
+            min_samples_leaf=int(config.get("min_samples_leaf", 5)),
+            max_features=config.get("max_features", "sqrt"),
+            random_state=int(config.get("random_state", 42)),
+            n_jobs=int(config.get("n_jobs", -1)),
+        )
+        return model, "random_forest", False
+
+    # Linear models need standardization
+    from sklearn.linear_model import ElasticNet, Lasso, Ridge
+
+    if model_type == "ridge":
+        model = Ridge(
+            alpha=float(config.get("alpha", 1.0)),
+            random_state=int(config.get("random_state", 42)),
+        )
+        return model, "ridge", True
+
+    if model_type == "lasso":
+        model = Lasso(
+            alpha=float(config.get("alpha", 0.1)),
+            random_state=int(config.get("random_state", 42)),
+            max_iter=int(config.get("max_iter", 2000)),
+        )
+        return model, "lasso", True
+
+    if model_type == "elasticnet":
+        model = ElasticNet(
+            alpha=float(config.get("alpha", 0.1)),
+            l1_ratio=float(config.get("l1_ratio", 0.5)),
+            random_state=int(config.get("random_state", 42)),
+            max_iter=int(config.get("max_iter", 2000)),
+        )
+        return model, "elasticnet", True
+
+    # Default to random forest
+    model = RandomForestRegressor(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=10,
+        min_samples_leaf=5,
+        random_state=42,
+        n_jobs=-1,
+    )
+    return model, "random_forest", False
+
+
+def tune_model(model, X_train: pd.DataFrame, y_train: np.ndarray, model_config: dict | None = None):
+    """Simple hyperparameter tuning for LightGBM / RandomForest when enabled in config."""
+    config = model_config or {}
+    if not bool(config.get("tune", False)):
+        return model
+
+    if isinstance(model, lgb.LGBMRegressor) if LGB_INSTALLED else False:
+        param_distributions = {
+            "n_estimators": [100, 200, 300],
+            "learning_rate": [0.03, 0.05, 0.1],
+        }
+    else:
+        param_distributions = {
+            "n_estimators": [100, 200, 300],
+        }
+
+    search = RandomizedSearchCV(
+        estimator=model,
+        param_distributions=param_distributions,
+        n_iter=int(config.get("tune_n_iter", 6)),
+        cv=int(config.get("tune_cv", 3)),
+        scoring="neg_mean_squared_error",
+        random_state=int(config.get("random_state", 42)),
+        n_jobs=int(config.get("n_jobs", -1)),
+    )
+    search.fit(X_train, y_train)
+    print("Best tuning params:", search.best_params_)
+    return search.best_estimator_
+
+
+def save_actual_vs_predicted_chart(eval_df: pd.DataFrame, out_path: Path) -> Path | None:
+    """Save an actual-vs-predicted return scatter plot to disk.
+
+    Returns None (without raising) if matplotlib is not installed - this keeps
+    the prediction pipeline usable in minimal environments (e.g. AWS Lambda)
+    that omit matplotlib to stay under deployment package size limits.
+    """
+    if not MATPLOTLIB_INSTALLED:
+        return None
+
+    plot_df = pd.DataFrame(
+        {
+            "actual_ret": pd.to_numeric(eval_df.get("actual_ret", pd.Series(dtype=float)), errors="coerce"),
+            "pred_ret": pd.to_numeric(eval_df.get("pred_ret", pd.Series(dtype=float)), errors="coerce"),
+        }
+    ).dropna()
+
+    if plot_df.empty:
+        raise ValueError("No actual/predicted values available to plot")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(plot_df["actual_ret"], plot_df["pred_ret"], alpha=0.75)
+
+    min_val = min(plot_df["actual_ret"].min(), plot_df["pred_ret"].min())
+    max_val = max(plot_df["actual_ret"].max(), plot_df["pred_ret"].max())
+    span = max(max_val - min_val, 1e-6)
+    ax.plot(
+        [min_val - 0.05 * span, max_val + 0.05 * span],
+        [min_val - 0.05 * span, max_val + 0.05 * span],
+        "r--",
+        linewidth=1,
+        label="Ideal fit",
+    )
+
+    ax.set_xlabel("Actual forward return")
+    ax.set_ylabel("Predicted forward return")
+    ax.set_title("Actual vs Predicted Returns")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+    return out_path
+
+
+def compute_feature_importance(model, feat_cols: list[str]) -> pd.DataFrame:
+    """Return a sorted feature-importance table for the fitted model."""
+    if hasattr(model, "feature_importances_"):
+        importances = model.feature_importances_
+    elif hasattr(model, "booster_") and hasattr(model.booster_, "feature_importance"):
+        importances = model.booster_.feature_importance(importance_type="gain")
+    else:
+        return pd.DataFrame(columns=["feature", "importance"])
+
+    fi = pd.DataFrame({"feature": feat_cols, "importance": importances}).sort_values("importance", ascending=False)
+    return fi
+
+
+def train_and_evaluate(
+    df: pd.DataFrame, return_days: int, use_enhanced_features: bool = True, model_config: dict | None = None
+):
+    print(f"Building dataset with {len(df)} rows...")
+
+    # Convert the target into a cross-sectional excess-return label for better alpha learning
+    df = compute_excess_return_target(df.sort_values("date"))
+
+    # CRITICAL FIX: Split train/test BEFORE feature engineering to prevent data leakage
+    df = df.sort_values("date")
+    unique_dates = sorted(df["date"].unique())
+    if len(unique_dates) < 60:
+        split_date = unique_dates[int(len(unique_dates) * 0.7)]
+    else:
+        split_date = unique_dates[-30]
+
+    # Split first
+    train = df[df["date"] <= split_date].copy()
+    test = df[df["date"] > split_date].copy()
+    train = train.dropna(subset=["fwd_ret_target"])
+    test = test.dropna(subset=["fwd_ret_target"])
+
+    print(f"Train: {len(train)} rows, Test: {len(test)} rows")
+
+    # Apply enhanced feature engineering separately to avoid leakage
+    # Train set: compute statistics and apply transformations
+    # Test set: apply transformations using train statistics only
+    if use_enhanced_features:
+        train, train_stats = enhance_features_train(train, add_sector_features=("sector" in df.columns))
+        test = enhance_features_test(test, train_stats, add_sector_features=("sector" in df.columns))
+        print(f"After feature engineering - Train: {len(train)} rows, Test: {len(test)} rows")
+
+    # Build model and check if it needs standardization
+    model, model_type, needs_standardization = build_model(model_config)
+
+    # CRITICAL: Fit scaler on training data only to prevent data leakage
+    # Only standardize for linear models (Ridge, Lasso, ElasticNet)
+    X_train, feat_cols, scaler = prepare_features(
+        train, fit_scaler=needs_standardization, use_standardization=needs_standardization
+    )
+    y_train = train["fwd_ret_target"].values
+
+    # Transform test data using fitted scaler (no refitting)
+    X_test, _, _ = prepare_features(test, scaler=scaler, fit_scaler=False, use_standardization=needs_standardization)
+    y_test = test["fwd_ret_target"].values
+
+    standardization_msg = " (standardized)" if needs_standardization else " (no standardization - tree model)"
+    print(f"Training {model_type} with {len(feat_cols)} features{standardization_msg} using excess-return target...")
+    model = tune_model(model, X_train, y_train, model_config)
+
+    model.fit(X_train, y_train)
+    pred = model.predict(X_test)
+
+    ic, _ = spearmanr(pred, y_test)
+    r2 = r2_score(y_test, pred)
+    mae = mean_absolute_error(y_test, pred)
+
+    print(f"Eval (return_days={return_days}): Spearman IC={ic:.4f}, R2={r2:.4f}, MAE={mae:.6f}")
+    print("Target is cross-sectional excess return vs sector/date median")
+    print(f"Number of features used: {len(feat_cols)}")
+
+    eval_df = pd.DataFrame({"actual_ret": y_test, "pred_ret": pred})
+    repo_root = Path(__file__).resolve().parents[3]
+    # Use /tmp for Lambda environments where reports/ doesn't exist
+    reports_dir = repo_root / "reports" / "screener_results"
+    if not reports_dir.exists() and Path("/tmp").exists():
+        chart_path = Path("/tmp") / f"actual_vs_predicted_{datetime.now(UTC).strftime('%Y%m%d')}.png"
+    else:
+        chart_path = reports_dir / f"actual_vs_predicted_{datetime.now(UTC).strftime('%Y%m%d')}.png"
+    if save_actual_vs_predicted_chart(eval_df, chart_path):
+        print(f"Wrote actual-vs-predicted chart to {chart_path}")
+    else:
+        print("matplotlib not installed - skipped actual-vs-predicted chart")
+
+    fi = compute_feature_importance(model, feat_cols)
+    if not fi.empty:
+        print("Top feature importances:")
+        print(fi.head(10).to_string(index=False))
+    metrics = {
+        "model_type": model_type,
+        "r2_score": r2,
+        "spearman_ic": ic,
+        "mae": mae,
+        "return_days": return_days,
+        "n_features": len(feat_cols),
+    }
+
+    return model, feat_cols, metrics, fi, scaler
+
+
+def score_latest(
+    model,
+    feat_cols: list[str],
+    cand_df: pd.DataFrame,
+    symbols: list[str],
+    return_days: int,
+    scaler=None,
+    metrics: dict = None,
+    use_enhanced_features: bool = True,
+):
+    """
+    Score latest prices for given symbols.
+
+    Args:
+        model: Trained model for predictions
+        feat_cols: List of feature column names
+        cand_df: Candidate dataframe with symbol metadata
+        symbols: List of symbols to score
+        return_days: Forward return horizon
+        scaler: Fitted StandardScaler from training (CRITICAL: must be from training data only)
+        metrics: Optional model performance metrics
+        use_enhanced_features: Whether to apply enhanced feature engineering
+
+    To properly compute enhanced features (lags, ranks, sector-relative), we need historical context.
+    Build a mini-dataset with last 30 days, then extract latest predictions.
+    """
+    # Download more history to compute lagged and cross-sectional features
+    adj = download_price_history(symbols, 90)
+
+    if adj.empty or len(adj) < 30:
+        print("Insufficient historical data for enhanced features")
+        return pd.DataFrame()
+
+    latest_date = adj.index[-1]
+    rows = []
+
+    # Build dataset with historical context (last 30 trading days)
+    for sym in symbols:
+        if sym not in adj.columns:
+            continue
+        series = adj[sym].dropna()
+        if len(series) < 30:
+            continue
+        tech = make_technical_features(series)
+
+        # Take last 30 days to compute features
+        for t_idx in range(max(30, len(tech) - 30), len(tech)):
+            date = tech.index[t_idx]
+            feat_row = tech.iloc[t_idx].to_dict()
+            meta = {}
+            row_meta = cand_df[cand_df["symbol"].astype(str) == sym]
+            if not row_meta.empty:
+                for col in [
+                    "pct_1w",
+                    "pct_1m",
+                    "rel_volume",
+                    "revenueGrowth",
+                    "earningsQuarterlyGrowth",
+                    "pegRatio",
+                    "trailingPE",
+                    "sector",
+                    "industry",
+                ]:
+                    if col in row_meta.columns:
+                        meta[col] = row_meta.iloc[0].get(col)
+            rec = {"symbol": sym, "date": date, "fwd_ret": np.nan}  # fwd_ret dummy for enhance_features
+            rec.update({k: (v if v is not None else np.nan) for k, v in feat_row.items()})
+            rec.update(meta)
+            rows.append(rec)
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return df
+
+    # Apply enhanced features (needs historical context)
+    if use_enhanced_features:
+        df = enhance_features(df, add_sector_features=("sector" in df.columns))
+
+    # Filter to only latest date
+    df = df[df["date"] == latest_date].copy()
+
+    # Prepare features with same scaler used in training (NO fitting here)
+    # use_standardization determined by whether scaler is provided
+    use_std = scaler is not None
+    X, _, _ = prepare_features(df, scaler=scaler, fit_scaler=False, use_standardization=use_std)
+    preds = model.predict(X)
+    df["pred_ret"] = preds
+    df = df.sort_values("pred_ret", ascending=False)
+
+    # Add strategy attribution metadata
+    df["prediction_rank"] = range(1, len(df) + 1)
+    df["strategy_source"] = "predictive_model"
+    if metrics:
+        df["model_type"] = metrics.get("model_type", "unknown")
+        df["model_r2_score"] = metrics.get("r2_score")
+        df["model_spearman_ic"] = metrics.get("spearman_ic")
+        df["model_mae"] = metrics.get("mae")
+
+    # Reorder columns to put prediction_rank and screener_rank at the beginning
+    cols = df.columns.tolist()
+    rank_cols = []
+    if "prediction_rank" in cols:
+        rank_cols.append("prediction_rank")
+        cols.remove("prediction_rank")
+    if "screener_rank" in cols:
+        rank_cols.append("screener_rank")
+        cols.remove("screener_rank")
+    if rank_cols:
+        cols = rank_cols + cols
+        df = df[cols]
+
+    return df
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--return-days", type=int, default=5)
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--lookback", type=int, default=180, help="lookback days for price history per symbol")
+    p.add_argument("--candidates-file", default=None)
+    args = p.parse_args()
+
+    repo = Path(__file__).resolve().parents[2]
+    reports = repo / "reports" / "screener_results"
+
+    if args.candidates_file:
+        cand_file = Path(args.candidates_file)
+    else:
+        cand_file = find_latest_screener_file(reports)
+
+    print(f"Using candidates file: {cand_file}")
+    cand_df = pd.read_csv(cand_file)
+    symbols = list(cand_df["symbol"].astype(str).unique())[: args.limit]
+
+    print(f"Building dataset for {len(symbols)} symbols (lookback={args.lookback})...")
+    df = build_dataset(cand_df, symbols, args.lookback, args.return_days)
+    if df.empty:
+        raise SystemExit("No training data constructed; increase lookback or limit")
+
+    print(f"Constructed dataset with {len(df)} rows")
+    model, feat_cols, metrics = train_and_evaluate(df, args.return_days)
+    score_latest(model, feat_cols, cand_df, symbols, args.return_days, metrics)
+
+
+if __name__ == "__main__":
+    main()

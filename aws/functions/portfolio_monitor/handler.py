@@ -1,6 +1,10 @@
 """
 Lambda handler for portfolio monitoring workflow.
-Monitors positions for stop-loss triggers and alerts on threshold breaches.
+Monitors positions and executes sells based on:
+1. Stop-loss levels
+2. Take-profit levels  
+3. ML predictions (predicted to drop)
+4. Does nothing if none of the above
 """
 import json
 import os
@@ -8,16 +12,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import boto3
+import sqlite3
+from botocore.exceptions import ClientError
 
 # Add source code to path
 sys.path.insert(0, '/opt/python')  # Lambda layer
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from runners.optimize_and_buy import resolve_credentials
-from fin_trade_alpaca.env_loader import load_environment_for_mode
 from alpaca.trading.client import TradingClient
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestQuoteRequest
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
 
 
 def get_alpaca_credentials(secrets_client, secret_name):
@@ -27,13 +31,57 @@ def get_alpaca_credentials(secrets_client, secret_name):
     return secret['key'], secret['secret']
 
 
+def get_position_protections(db_path, symbol, account):
+    """Get stop-loss and take-profit levels from database."""
+    if not os.path.exists(db_path):
+        return None, None
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Get most recent transaction with protections
+    cursor.execute("""
+        SELECT stop_loss, take_profit 
+        FROM transactions 
+        WHERE symbol = ? AND account = ? AND status = 'filled'
+        ORDER BY filled_at DESC 
+        LIMIT 1
+    """, (symbol, account))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result:
+        return result[0], result[1]  # stop_loss, take_profit
+    return None, None
+
+
+def get_ml_prediction(symbol, lookback_days=60):
+    """Run ML prediction for a single symbol.
+    
+    Returns predicted return (negative means predicted to drop).
+    """
+    try:
+        # Import prediction logic
+        from runners.predict_screener import predict_single_symbol
+        
+        # Run prediction
+        prediction = predict_single_symbol(symbol, lookback_days=lookback_days)
+        return prediction.get('predicted_return', 0.0) if prediction else 0.0
+    except Exception as e:
+        print(f"Failed to get ML prediction for {symbol}: {e}")
+        return 0.0
+
+
 def lambda_handler(event, context):
     """
-    Lambda handler for portfolio monitoring.
+    Lambda handler for portfolio monitoring and sell execution.
     
     Event structure:
     {
-        "mode": "paper"  # or "live"
+        "mode": "paper",  # or "live"
+        "ml_sell_threshold": -0.05,  # Sell if predicted return < -5%
+        "check_ml_predictions": true  # Whether to use ML predictions
     }
     """
     # Initialize AWS clients
@@ -44,21 +92,39 @@ def lambda_handler(event, context):
     bucket_name = os.environ['S3_BUCKET']
     alert_topic = os.environ['SNS_ALERT_TOPIC']
     status_topic = os.environ['SNS_STATUS_TOPIC']
+    trading_enabled = os.environ.get('TRADING_ENABLED', 'false').lower() == 'true'
     
     try:
         # Extract parameters from event
         mode = event.get('mode', 'paper')
+        ml_sell_threshold = event.get('ml_sell_threshold', -0.05)
+        check_ml = event.get('check_ml_predictions', False)
         
-        print(f"Starting portfolio monitor: mode={mode}")
+        print(f"Starting portfolio monitor: mode={mode}, trading_enabled={trading_enabled}, ml_check={check_ml}")
+        
+        # Download portfolio database from S3
+        db_local_path = '/tmp/portfolio.db'
+        db_s3_key = 'portfolio_db/portfolio.db'
+        try:
+            s3_client.download_file(bucket_name, db_s3_key, db_local_path)
+            print(f"Downloaded database from s3://{bucket_name}/{db_s3_key}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                print("No existing database found in S3")
+            else:
+                raise
         
         # Get Alpaca credentials
         secret_name = (os.environ['ALPACA_LIVE_SECRET_NAME'] if mode == 'live' 
                       else os.environ['ALPACA_PAPER_SECRET_NAME'])
         api_key, api_secret = get_alpaca_credentials(secrets_client, secret_name)
         
-        # Initialize Alpaca clients
+        # Set environment variables for Alpaca
+        os.environ['ALPACA_PAPER_API_KEY' if mode == 'paper' else 'ALPACA_LIVE_API_KEY'] = api_key
+        os.environ['ALPACA_PAPER_API_SECRET' if mode == 'paper' else 'ALPACA_LIVE_API_SECRET'] = api_secret
+        
+        # Initialize Alpaca client
         trading_client = TradingClient(api_key, api_secret, paper=(mode == 'paper'))
-        data_client = StockHistoricalDataClient(api_key, api_secret)
         
         # Get current positions
         positions = trading_client.get_all_positions()
@@ -75,87 +141,142 @@ def lambda_handler(event, context):
         
         print(f"Monitoring {len(positions)} positions")
         
-        # Check each position for threshold breaches
-        alerts = []
-        warnings = []
+        # Track sell decisions
+        sell_actions = []
+        holds = []
         
         for position in positions:
             symbol = position.symbol
             qty = float(position.qty)
             current_price = float(position.current_price)
             avg_entry = float(position.avg_entry_price)
-            market_value = float(position.market_value)
             unrealized_pl = float(position.unrealized_pl)
             unrealized_plpc = float(position.unrealized_plpc)
             
-            # Check for significant losses (>5%)
-            if unrealized_plpc < -0.05:
-                alerts.append({
+            # Get protection levels from database
+            stop_loss, take_profit = get_position_protections(db_local_path, symbol, mode)
+            
+            sell_reason = None
+            
+            # Check stop-loss
+            if stop_loss and current_price <= stop_loss:
+                sell_reason = f'STOP_LOSS (${stop_loss:.2f})'
+                print(f"{symbol}: Stop loss triggered - current=${current_price:.2f}, stop=${stop_loss:.2f}")
+            
+            # Check take-profit
+            elif take_profit and current_price >= take_profit:
+                sell_reason = f'TAKE_PROFIT (${take_profit:.2f})'
+                print(f"{symbol}: Take profit triggered - current=${current_price:.2f}, take=${take_profit:.2f}")
+            
+            # Check ML prediction if enabled
+            elif check_ml:
+                predicted_return = get_ml_prediction(symbol)
+                if predicted_return < ml_sell_threshold:
+                    sell_reason = f'ML_PREDICTION ({predicted_return*100:.2f}% predicted)'
+                    print(f"{symbol}: ML sell signal - predicted return={predicted_return*100:.2f}%")
+            
+            # Execute sell if reason found
+            if sell_reason:
+                if trading_enabled:
+                    try:
+                        # Submit market sell order
+                        order_request = MarketOrderRequest(
+                            symbol=symbol,
+                            qty=qty,
+                            side=OrderSide.SELL,
+                            time_in_force=TimeInForce.DAY
+                        )
+                        order = trading_client.submit_order(order_request)
+                        
+                        sell_actions.append({
+                            'symbol': symbol,
+                            'qty': qty,
+                            'price': current_price,
+                            'reason': sell_reason,
+                            'pl': unrealized_pl,
+                            'pl_pct': unrealized_plpc,
+                            'order_id': order.id,
+                            'status': 'SUBMITTED'
+                        })
+                        print(f"✓ Submitted sell order for {symbol}: qty={qty}, reason={sell_reason}")
+                        
+                    except Exception as e:
+                        sell_actions.append({
+                            'symbol': symbol,
+                            'qty': qty,
+                            'price': current_price,
+                            'reason': sell_reason,
+                            'pl': unrealized_pl,
+                            'pl_pct': unrealized_plpc,
+                            'status': 'FAILED',
+                            'error': str(e)
+                        })
+                        print(f"✗ Failed to sell {symbol}: {e}")
+                else:
+                    sell_actions.append({
+                        'symbol': symbol,
+                        'qty': qty,
+                        'price': current_price,
+                        'reason': sell_reason,
+                        'pl': unrealized_pl,
+                        'pl_pct': unrealized_plpc,
+                        'status': 'SKIPPED_TRADING_DISABLED'
+                    })
+                    print(f"⚠️ Would sell {symbol} ({sell_reason}) but trading disabled")
+            else:
+                # Hold position
+                holds.append({
                     'symbol': symbol,
-                    'type': 'LARGE_LOSS',
-                    'unrealized_plpc': unrealized_plpc,
-                    'unrealized_pl': unrealized_pl,
-                    'current_price': current_price
-                })
-            # Check for moderate losses (>3%)
-            elif unrealized_plpc < -0.03:
-                warnings.append({
-                    'symbol': symbol,
-                    'type': 'MODERATE_LOSS',
-                    'unrealized_plpc': unrealized_plpc,
-                    'unrealized_pl': unrealized_pl,
-                    'current_price': current_price
-                })
-            # Check for large gains (>10%)
-            elif unrealized_plpc > 0.10:
-                alerts.append({
-                    'symbol': symbol,
-                    'type': 'LARGE_GAIN',
-                    'unrealized_plpc': unrealized_plpc,
-                    'unrealized_pl': unrealized_pl,
-                    'current_price': current_price
+                    'qty': qty,
+                    'price': current_price,
+                    'pl': unrealized_pl,
+                    'pl_pct': unrealized_plpc,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit
                 })
         
-        # Send notifications if there are alerts or warnings
-        if alerts:
-            alert_lines = []
-            for alert in alerts:
-                alert_lines.append(
-                    f"{alert['symbol']}: {alert['type']} - "
-                    f"{alert['unrealized_plpc']*100:.2f}% (${alert['unrealized_pl']:.2f}) "
-                    f"@ ${alert['current_price']:.2f}"
+        # Upload updated database to S3 if it exists
+        if os.path.exists(db_local_path):
+            s3_client.upload_file(db_local_path, bucket_name, db_s3_key)
+            print(f"Uploaded database to s3://{bucket_name}/{db_s3_key}")
+        
+        # Send notification if sells were executed
+        if sell_actions:
+            sell_lines = []
+            for action in sell_actions:
+                status_emoji = '✓' if action['status'] == 'SUBMITTED' else ('✗' if action['status'] == 'FAILED' else '⚠️')
+                sell_lines.append(
+                    f"{status_emoji} {action['symbol']}: SELL {action['qty']:.2f} @ ${action['price']:.2f} "
+                    f"({action['reason']}) - P/L: ${action['pl']:.2f} ({action['pl_pct']*100:.2f}%)"
                 )
             
-            message = f"""Portfolio Alert - Threshold Breached
+            message = f"""Portfolio Monitor - Sell Orders Executed
 
 Mode: {mode.upper()}
+Trading Enabled: {trading_enabled}
 Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Total Positions: {len(positions)}
-Alerts: {len(alerts)}
+Sells: {len(sell_actions)}
+Holds: {len(holds)}
 
-⚠️ ALERTS:
-{chr(10).join(alert_lines)}
+📤 SELL ORDERS:
+{chr(10).join(sell_lines)}
 """
             
             sns_client.publish(
-                TopicArn=alert_topic,
-                Subject=f'⚠️ Portfolio Alert ({mode.upper()}) - {len(alerts)} positions',
+                TopicArn=alert_topic if trading_enabled else status_topic,
+                Subject=f'{"💰" if trading_enabled else "🧪"} Portfolio Monitor ({mode.upper()}) - {len(sell_actions)} sells',
                 Message=message
             )
         
-        # Log summary
-        total_value = sum(float(p.market_value) for p in positions)
-        total_pl = sum(float(p.unrealized_pl) for p in positions)
-        total_plpc = (total_pl / (total_value - total_pl)) if (total_value - total_pl) != 0 else 0
-        
+        # Prepare summary
         summary = {
             'mode': mode,
+            'trading_enabled': trading_enabled,
             'position_count': len(positions),
-            'total_market_value': total_value,
-            'total_unrealized_pl': total_pl,
-            'total_unrealized_plpc': total_plpc,
-            'alert_count': len(alerts),
-            'warning_count': len(warnings),
+            'sells': len(sell_actions),
+            'holds': len(holds),
+            'sell_actions': sell_actions,
             'timestamp': datetime.now().isoformat()
         }
         
@@ -174,7 +295,7 @@ Alerts: {len(alerts)}
         sns_client.publish(
             TopicArn=alert_topic,
             Subject=f'🚨 Portfolio Monitor Failed ({mode.upper()})',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
@@ -182,6 +303,6 @@ Alerts: {len(alerts)}
             'body': json.dumps({
                 'message': error_msg,
                 'mode': mode,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

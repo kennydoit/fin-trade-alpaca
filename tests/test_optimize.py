@@ -1,6 +1,7 @@
 from decimal import Decimal
 
-from optimize import flatten_symbol_weights, distribute_notionals
+from fin_trade_alpaca.order_execution import distribute_notionals
+from fin_trade_alpaca.strategy_config import flatten_symbol_weights
 
 
 def test_flatten_symbol_weights():

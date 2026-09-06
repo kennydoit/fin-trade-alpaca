@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 import boto3
+from botocore.exceptions import ClientError
 
 # Add source code to path
 sys.path.insert(0, '/opt/python')  # Lambda layer
@@ -55,8 +56,11 @@ def lambda_handler(event, context):
         try:
             s3_client.download_file(bucket_name, db_s3_key, db_local_path)
             print(f"Downloaded database from s3://{bucket_name}/{db_s3_key}")
-        except s3_client.exceptions.NoSuchKey:
-            print("No existing database found in S3, will create new")
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                print("No existing database found in S3, will create new")
+            else:
+                raise
         
         # Download config file from S3
         config_s3_key = 'configs/prediction_screener.json'
@@ -64,48 +68,72 @@ def lambda_handler(event, context):
         try:
             s3_client.download_file(bucket_name, config_s3_key, config_local_path)
             print(f"Downloaded config from s3://{bucket_name}/{config_s3_key}")
-        except s3_client.exceptions.NoSuchKey:
-            print("No config found in S3, using defaults")
-            config_local_path = None
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                print("No config found in S3, using defaults")
+                config_local_path = None
+            else:
+                raise
         
         # Create temp directory for outputs
         output_dir = '/tmp/screener_results'
         os.makedirs(output_dir, exist_ok=True)
         
-        # Run prediction screener
-        # Simulate argparse.Namespace for the existing code
-        args = argparse.Namespace(
-            limit=limit,
-            return_days=return_days,
-            lookback=lookback,
-            config=config_local_path,
-            db_path=db_local_path if os.path.exists(db_local_path) else None,
-            output_dir=output_dir
-        )
+        # Download the latest equity screener results from S3
+        print("Downloading latest equity screener results from S3...")
         
-        # Call the prediction screener logic
-        # Note: This requires adapting the main() function to accept args
-        # For now, we'll set sys.argv to simulate CLI call
+        # List all equity screener files in S3
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix='screener_results/equity_screener_'
+            )
+            
+            if 'Contents' not in response or len(response['Contents']) == 0:
+                raise ValueError(
+                    "No equity screener results found in S3. "
+                    "Please run the equity screener first to generate candidates."
+                )
+            
+            # Get the most recent file
+            latest_file = max(response['Contents'], key=lambda x: x['LastModified'])
+            candidates_s3_key = latest_file['Key']
+            candidates_local_path = f"{output_dir}/candidates.csv"
+            
+            s3_client.download_file(bucket_name, candidates_s3_key, candidates_local_path)
+            print(f"Downloaded candidates from s3://{bucket_name}/{candidates_s3_key}")
+            
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                raise ValueError(
+                    "No equity screener results found in S3. "
+                    "Please run the equity screener first to generate candidates."
+                )
+            else:
+                raise
+        
+        # Run prediction screener using the candidates
+        print(f"Running prediction screener with {limit} symbols...")
+        output_file = os.path.join(output_dir, 'predictions.csv')
         sys.argv = [
             'predict_screener',
+            '--candidates-file', candidates_local_path,
             '--limit', str(limit),
             '--return-days', str(return_days),
             '--lookback', str(lookback),
-            '--output-dir', output_dir
+            '--out', output_file
         ]
         
         if config_local_path:
             sys.argv.extend(['--config', config_local_path])
         
-        # Execute the screener (this will write CSV to output_dir)
+        # Execute the screener (this will write CSV to output_file)
         run_predict_screener()
         
-        # Find the generated CSV file (most recent)
-        csv_files = list(Path(output_dir).glob('predictions_*.csv'))
-        if not csv_files:
-            raise ValueError("No prediction CSV file generated")
-        
-        latest_csv = max(csv_files, key=lambda p: p.stat().st_mtime)
+        # Use the output file we specified
+        latest_csv = Path(output_file)
+        if not latest_csv.exists():
+            raise ValueError(f"No prediction CSV file generated at {output_file}")
         
         # Upload results to S3
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -159,13 +187,13 @@ Top 5 Predictions:
         sns_client.publish(
             TopicArn=alert_topic,
             Subject='🚨 Prediction Screener Failed',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'message': error_msg,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

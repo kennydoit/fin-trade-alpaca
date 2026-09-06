@@ -204,7 +204,7 @@ Protected Positions:
         sns_client.publish(
             TopicArn=alert_topic,
             Subject=f'🚨 Add Protections Failed ({mode.upper()})',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
@@ -212,6 +212,6 @@ Protected Positions:
             'body': json.dumps({
                 'message': error_msg,
                 'mode': mode,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

@@ -87,6 +87,45 @@ def lambda_handler(event, context):
         filled_orders = [o for o in recent_orders if str(o.status) == 'filled']
         pending_orders = [o for o in recent_orders if str(o.status) in ['new', 'accepted', 'pending_new']]
         cancelled_orders = [o for o in recent_orders if str(o.status) in ['canceled', 'cancelled']]
+        buy_fills = [o for o in filled_orders if str(o.side).upper() == 'BUY']
+        sell_fills = [o for o in filled_orders if str(o.side).upper() == 'SELL']
+
+        def _order_value(order):
+            qty = float(getattr(order, 'filled_qty', 0) or 0)
+            price = float(getattr(order, 'filled_avg_price', 0) or 0)
+            if qty <= 0 or price <= 0:
+                notional = float(getattr(order, 'notional', 0) or 0)
+                return notional
+            return qty * price
+
+        total_trade_value = sum(_order_value(order) for order in filled_orders)
+        total_buy_value = sum(_order_value(order) for order in buy_fills)
+        total_sell_value = sum(_order_value(order) for order in sell_fills)
+        net_trade_flow = total_sell_value - total_buy_value
+
+        realized_pnl = 0.0
+        for order in filled_orders:
+            if str(order.side).upper() == 'SELL':
+                realized_pnl += float(getattr(order, 'realized_pnl', 0) or 0)
+
+        if positions:
+            sorted_positions = sorted(positions, key=lambda p: float(p.market_value), reverse=True)
+            best_performer = max(positions, key=lambda p: float(p.unrealized_plpc))
+            worst_performer = min(positions, key=lambda p: float(p.unrealized_plpc))
+            largest_gain = max(positions, key=lambda p: float(p.unrealized_pl))
+            largest_loss = min(positions, key=lambda p: float(p.unrealized_pl))
+            winners = [p for p in positions if float(p.unrealized_pl) > 0]
+            losers = [p for p in positions if float(p.unrealized_pl) < 0]
+            largest_position_pct = max(float(p.market_value) / total_market_value * 100 for p in sorted_positions) if total_market_value > 0 else 0
+        else:
+            sorted_positions = []
+            best_performer = None
+            worst_performer = None
+            largest_gain = None
+            largest_loss = None
+            winners = []
+            losers = []
+            largest_position_pct = 0.0
         
         # Build summary report
         report = f"""📊 Daily Portfolio Summary - {mode.upper()}
@@ -105,13 +144,46 @@ Total Equity:       ${total_equity:,.2f}
 Total Market Value: ${total_market_value:,.2f}
 Total Cost Basis:   ${total_cost_basis:,.2f}
 Unrealized P&L:     ${total_unrealized_pl:,.2f} ({total_unrealized_plpc:+.2f}%)
+Winners / Losers:   {len(winners)} / {len(losers)}
+Largest Position:   {largest_position_pct:.2f}% of portfolio
+
+📊 TRADING ACTIVITY (Last 24 Hours)
+{'─'*60}
+Total Fills:        {len(filled_orders)}
+Buy Fills:          {len(buy_fills)}
+Sell Fills:         {len(sell_fills)}
+Trade Value:        ${total_trade_value:,.2f}
+Buy Notional:       ${total_buy_value:,.2f}
+Sell Notional:      ${total_sell_value:,.2f}
+Net Flow:           ${net_trade_flow:,.2f}
+Realized P&L:       ${realized_pnl:,.2f}
 
 """
         
+        # Add strongest/weakest position performance
+        if best_performer is not None and worst_performer is not None:
+            report += "\nPerformance Leaders:\n"
+            report += (
+                f"  • Best performer: {best_performer.symbol} ({float(best_performer.unrealized_plpc)*100:+.2f}%)\n"
+                f"  • Worst performer: {worst_performer.symbol} ({float(worst_performer.unrealized_plpc)*100:+.2f}%)\n"
+            )
+            if largest_gain is not None and largest_loss is not None:
+                report += (
+                    f"  • Largest gain: {largest_gain.symbol} (${float(largest_gain.unrealized_pl):,.2f})\n"
+                    f"  • Largest loss: {largest_loss.symbol} (${float(largest_loss.unrealized_pl):,.2f})\n"
+                )
+
+        if realized_pnl != 0 or filled_orders:
+            report += "\nMarket Close Snapshot:\n"
+            report += f"  • Daily realized P&L: ${realized_pnl:,.2f}\n"
+            report += f"  • Net trade flow: ${net_trade_flow:,.2f}\n"
+            if best_performer is not None:
+                report += f"  • Best open position: {best_performer.symbol} ({float(best_performer.unrealized_plpc)*100:+.2f}%)\n"
+            if worst_performer is not None:
+                report += f"  • Worst open position: {worst_performer.symbol} ({float(worst_performer.unrealized_plpc)*100:+.2f}%)\n"
+
         # Add top positions
         if positions:
-            # Sort by market value descending
-            sorted_positions = sorted(positions, key=lambda p: float(p.market_value), reverse=True)
             report += "\nTop Positions:\n"
             for i, pos in enumerate(sorted_positions[:10], 1):
                 symbol = pos.symbol
@@ -120,7 +192,7 @@ Unrealized P&L:     ${total_unrealized_pl:,.2f} ({total_unrealized_plpc:+.2f}%)
                 market_value = float(pos.market_value)
                 unrealized_pl = float(pos.unrealized_pl)
                 unrealized_plpc = float(pos.unrealized_plpc) * 100
-                
+
                 report += (f"{i:2d}. {symbol:6s} | {qty:8.2f} @ ${current_price:7.2f} = ${market_value:9,.2f} "
                           f"| P&L: ${unrealized_pl:8,.2f} ({unrealized_plpc:+6.2f}%)\n")
         
@@ -132,7 +204,7 @@ Unrealized P&L:     ${total_unrealized_pl:,.2f} ({total_unrealized_plpc:+.2f}%)
         
         if filled_orders:
             report += "\nRecent Fills:\n"
-            for order in filled_orders[:5]:  # Show last 5 fills
+            for order in filled_orders[:6]:  # Show the latest fills
                 symbol = order.symbol
                 side = str(order.side).upper()
                 qty = float(order.filled_qty) if order.filled_qty else 0
@@ -151,32 +223,29 @@ Unrealized P&L:     ${total_unrealized_pl:,.2f} ({total_unrealized_plpc:+.2f}%)
         
         # Add performance indicators
         report += f"\n\n📊 PERFORMANCE INDICATORS\n{'─'*60}\n"
-        
-        # Calculate diversification
         if positions:
-            largest_position_pct = max(float(p.market_value) / total_market_value * 100 for p in positions) if total_market_value > 0 else 0
             report += f"Position Count:     {len(positions)}\n"
             report += f"Largest Position:   {largest_position_pct:.2f}% of portfolio\n"
-            
-            # Count winners vs losers
-            winners = [p for p in positions if float(p.unrealized_pl) > 0]
-            losers = [p for p in positions if float(p.unrealized_pl) < 0]
             report += f"Winners / Losers:   {len(winners)} / {len(losers)}\n"
-            
-            # Largest gain/loss
-            if positions:
-                best_performer = max(positions, key=lambda p: float(p.unrealized_plpc))
-                worst_performer = min(positions, key=lambda p: float(p.unrealized_plpc))
+            if best_performer is not None:
                 report += f"Best Performer:     {best_performer.symbol} ({float(best_performer.unrealized_plpc)*100:+.2f}%)\n"
+            if worst_performer is not None:
                 report += f"Worst Performer:    {worst_performer.symbol} ({float(worst_performer.unrealized_plpc)*100:+.2f}%)\n"
-        
+            if largest_gain is not None:
+                report += f"Largest Gain:       {largest_gain.symbol} (${float(largest_gain.unrealized_pl):,.2f})\n"
+            if largest_loss is not None:
+                report += f"Largest Loss:       {largest_loss.symbol} (${float(largest_loss.unrealized_pl):,.2f})\n"
+
         report += f"\n{'='*60}\n"
         report += f"Generated by fin-trade-alpaca automated trading system\n"
         
         # Send summary via SNS
         sns_client.publish(
             TopicArn=status_topic,
-            Subject=f'📊 Daily Portfolio Summary ({mode.upper()}) - {len(positions)} positions, ${total_unrealized_pl:,.2f} P&L',
+            Subject=(
+                f"📊 Daily Portfolio Summary ({mode.upper()}) - "
+                f"{len(positions)} positions | {len(filled_orders)} fills | ${total_unrealized_pl:,.2f} P&L"
+            ),
             Message=report
         )
         
@@ -211,7 +280,7 @@ Unrealized P&L:     ${total_unrealized_pl:,.2f} ({total_unrealized_plpc:+.2f}%)
         sns_client.publish(
             TopicArn=status_topic,
             Subject=f'⚠️ Daily Summary Failed ({mode.upper()})',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
@@ -219,6 +288,6 @@ Unrealized P&L:     ${total_unrealized_pl:,.2f} ({total_unrealized_plpc:+.2f}%)
             'body': json.dumps({
                 'message': error_msg,
                 'mode': mode,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

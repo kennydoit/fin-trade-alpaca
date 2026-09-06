@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import boto3
+from botocore.exceptions import ClientError
 
 # Add source code to path
 sys.path.insert(0, '/opt/python')  # Lambda layer
@@ -69,8 +70,33 @@ def lambda_handler(event, context):
         try:
             s3_client.download_file(bucket_name, db_s3_key, db_local_path)
             print(f"Downloaded database from s3://{bucket_name}/{db_s3_key}")
-        except s3_client.exceptions.NoSuchKey:
-            print("No existing database found in S3")
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                print("No existing database found in S3")
+            else:
+                raise
+        
+        # Download latest predictions from S3
+        print("Downloading latest predictions from S3...")
+        predictions_local_path = '/tmp/predictions.csv'
+        try:
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix='screener_results/predictions_'
+            )
+            if 'Contents' not in response or len(response['Contents']) == 0:
+                raise ValueError("No prediction files found in S3. Run prediction screener first.")
+            
+            # Get most recent predictions file
+            latest_file = max(response['Contents'], key=lambda x: x['LastModified'])
+            predictions_s3_key = latest_file['Key']
+            s3_client.download_file(bucket_name, predictions_s3_key, predictions_local_path)
+            print(f"Downloaded predictions from s3://{bucket_name}/{predictions_s3_key}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                raise ValueError("No predictions found in S3. Run prediction screener first.")
+            else:
+                raise
         
         # Download strategy config from S3
         config_s3_key = 'configs/strategy.json'
@@ -78,8 +104,25 @@ def lambda_handler(event, context):
         try:
             s3_client.download_file(bucket_name, config_s3_key, config_local_path)
             print(f"Downloaded config from s3://{bucket_name}/{config_s3_key}")
-        except s3_client.exceptions.NoSuchKey:
-            raise ValueError(f"Strategy config not found: s3://{bucket_name}/{config_s3_key}")
+            
+            # Update config to point to local predictions file
+            with open(config_local_path, 'r') as f:
+                config = json.load(f)
+            
+            # Update short_term bucket to use downloaded predictions
+            if 'buckets' in config and 'short_term' in config['buckets']:
+                config['buckets']['short_term']['screener'] = predictions_local_path
+                print(f"Updated strategy config to use predictions: {predictions_local_path}")
+            
+            # Write updated config
+            with open(config_local_path, 'w') as f:
+                json.dump(config, f, indent=2)
+                
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                raise ValueError(f"Strategy config not found: s3://{bucket_name}/{config_s3_key}")
+            else:
+                raise
         
         # Get Alpaca credentials
         secret_name = (os.environ['ALPACA_LIVE_SECRET_NAME'] if mode == 'live' 
@@ -159,7 +202,7 @@ Total Notional: ${total_notional:.2f}
         sns_client.publish(
             TopicArn=alert_topic,
             Subject=f'🚨 Optimize & Buy Failed ({mode.upper()})',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
@@ -167,6 +210,6 @@ Total Notional: ${total_notional:.2f}
             'body': json.dumps({
                 'message': error_msg,
                 'mode': mode,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

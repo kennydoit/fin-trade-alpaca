@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import calendar
@@ -514,6 +514,69 @@ def pick_top_n_from_screener(csv_path: Path, n: int, existing_symbols: set[str] 
     return [(r[0], r[1]) for r in top]
 
 
+def load_model_quality_metrics(csv_path: Path) -> dict[str, float | None]:
+    """Read model quality metrics from the first screener row, if present."""
+    metrics = {
+        "spearman_ic": None,
+        "r2": None,
+        "mae": None,
+    }
+    try:
+        with csv_path.open("r", encoding="utf-8") as f:
+            first = next(csv.DictReader(f), None)
+    except OSError:
+        return metrics
+
+    if not first:
+        return metrics
+
+    metrics["spearman_ic"] = safe_float(first.get("model_spearman_ic"))
+    metrics["r2"] = safe_float(first.get("model_r2_score"))
+    metrics["mae"] = safe_float(first.get("model_mae"))
+    return metrics
+
+
+def passes_model_quality_gate(csv_path: Path, short_bucket: dict, short_cfg: dict) -> tuple[bool, str]:
+    """Return whether short-term entries should run given model quality thresholds."""
+    gate_cfg = short_bucket.get("model_quality_gate") or short_cfg.get("model_quality_gate") or {}
+    if not gate_cfg or not gate_cfg.get("enabled", False):
+        return True, ""
+
+    min_spearman = safe_float(gate_cfg.get("min_spearman_ic"))
+    min_r2 = safe_float(gate_cfg.get("min_r2"))
+    max_mae = safe_float(gate_cfg.get("max_mae"))
+    require_metrics = bool(gate_cfg.get("require_metrics", True))
+
+    metrics = load_model_quality_metrics(csv_path)
+    missing = []
+    if min_spearman is not None and metrics["spearman_ic"] is None:
+        missing.append("model_spearman_ic")
+    if min_r2 is not None and metrics["r2"] is None:
+        missing.append("model_r2_score")
+    if max_mae is not None and metrics["mae"] is None:
+        missing.append("model_mae")
+
+    if missing and require_metrics:
+        return False, f"Skipping short-term allocation: missing model metrics ({', '.join(missing)})."
+
+    print(
+        "Model quality metrics: "
+        f"spearman_ic={metrics['spearman_ic']}, r2={metrics['r2']}, mae={metrics['mae']}"
+    )
+
+    failures = []
+    if min_spearman is not None and metrics["spearman_ic"] is not None and metrics["spearman_ic"] < min_spearman:
+        failures.append(f"spearman_ic={metrics['spearman_ic']:.4f} < min_spearman_ic={min_spearman:.4f}")
+    if min_r2 is not None and metrics["r2"] is not None and metrics["r2"] < min_r2:
+        failures.append(f"r2={metrics['r2']:.4f} < min_r2={min_r2:.4f}")
+    if max_mae is not None and metrics["mae"] is not None and metrics["mae"] > max_mae:
+        failures.append(f"mae={metrics['mae']:.4f} > max_mae={max_mae:.4f}")
+
+    if failures:
+        return False, f"Skipping short-term allocation: model quality gate failed ({'; '.join(failures)})."
+    return True, ""
+
+
 def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run: bool, creds: ModeCredentials = None) -> list[str]:
     """orders: list of dicts with keys: symbol, notional, price, stop_pct, take_pct"""
     submitted = []
@@ -587,8 +650,8 @@ def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run:
             order = client.submit_order(req)
             submitted.append(order.id)
             
-            print(f"✓ Submitted {symbol} order id={order.id} qty={qty:.6f}")
-            print(f"  ⚠️  Note: Stop loss/take profit will need to be added separately after fill")
+            print(f"Γ£ô Submitted {symbol} order id={order.id} qty={qty:.6f}")
+            print(f"  ΓÜá∩╕Å  Note: Stop loss/take profit will need to be added separately after fill")
             print(f"     Target stop=${stop_price:.2f}, take=${take_price:.2f}")
         except APIError as ex:
             print(f"Short-term order failed for {symbol}: {ex}")
@@ -844,6 +907,13 @@ def main() -> int:
         if csv_path is None:
             print("Short-term requested but no screener CSV found in reports/screener_results. Skipping short-term allocation.")
         else:
+            gate_ok, gate_reason = passes_model_quality_gate(csv_path, short_bucket, short_cfg)
+            if not gate_ok:
+                print(gate_reason)
+                picks = []
+            else:
+                picks = None
+
             existing_symbols = set()
             if client is not None:
                 try:
@@ -851,8 +921,9 @@ def main() -> int:
                 except Exception as ex:
                     print(f"Unable to read existing positions for short-term filter: {ex}")
 
-            n = int(n_assets)
-            picks = pick_top_n_from_screener(csv_path, n, existing_symbols=existing_symbols)
+            if picks is None:
+                n = int(n_assets)
+                picks = pick_top_n_from_screener(csv_path, n, existing_symbols=existing_symbols)
             if not picks:
                 print(f"No valid picks found in screener {csv_path}. Skipping short-term allocation.")
             else:

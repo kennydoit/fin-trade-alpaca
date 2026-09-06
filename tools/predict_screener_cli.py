@@ -17,13 +17,14 @@ import numpy as np
 import pandas as pd
 import sys
 
-# ensure repo root is on sys.path so we can import sandbox modules
+# ensure src/ is on sys.path so we can import the yfinance screener package
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-# import functions from sandbox pipeline
-from sandbox.predict_short_term import (
+# import functions from the prediction pipeline (src/yfinance/screener/predict_short_term.py)
+from yfinance.screener.predict_short_term import (
     find_latest_screener_file,
     build_dataset,
     train_and_evaluate,
@@ -114,7 +115,7 @@ def main():
         raise SystemExit('No training data constructed; try increasing lookback or limit')
 
     print(f'Constructed dataset with {len(df)} rows')
-    model, feat_cols = train_and_evaluate(df, args.return_days)
+    model, feat_cols, _metrics, _feature_importance, _scaler = train_and_evaluate(df, args.return_days)
 
     # determine output path
     ts = datetime.utcnow().strftime('%Y%m%d')

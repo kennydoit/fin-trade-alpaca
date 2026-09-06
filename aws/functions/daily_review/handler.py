@@ -5,7 +5,7 @@ Evaluates positions and executes exit logic based on predictions and price movem
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import boto3
 
@@ -13,7 +13,24 @@ import boto3
 sys.path.insert(0, '/opt/python')  # Lambda layer
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from tools.daily_portfolio_review import AGGRESSIVENESS_PRESETS
+# Aggressiveness presets
+AGGRESSIVENESS_PRESETS = {
+    "conservative": {
+        "min_prediction_rank": 20,
+        "stop_loss_pct": -5.0,
+        "take_profit_pct": 10.0,
+    },
+    "moderate": {
+        "min_prediction_rank": 10,
+        "stop_loss_pct": -3.0,
+        "take_profit_pct": 7.0,
+    },
+    "aggressive": {
+        "min_prediction_rank": 5,
+        "stop_loss_pct": -2.0,
+        "take_profit_pct": 5.0,
+    },
+}
 
 
 def get_alpaca_credentials(secrets_client, secret_name):
@@ -21,6 +38,21 @@ def get_alpaca_credentials(secrets_client, secret_name):
     response = secrets_client.get_secret_value(SecretId=secret_name)
     secret = json.loads(response['SecretString'])
     return secret['key'], secret['secret']
+
+
+def _as_bool(value, default=True):
+    """Parse common bool-like values from event/env payloads."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'1', 'true', 'yes', 'on'}:
+            return True
+        if normalized in {'0', 'false', 'no', 'off'}:
+            return False
+    return bool(value)
 
 
 def lambda_handler(event, context):
@@ -34,6 +66,8 @@ def lambda_handler(event, context):
         "min_prediction_rank": 10,  # optional: custom threshold
         "stop_loss_pct": -3.0,  # optional: custom threshold
         "take_profit_pct": 7.0,  # optional: custom threshold
+        "min_hold_days": 2,  # optional: skip non-risk exits for very new positions
+        "avoid_same_day_exit": true,  # optional: skip same-day buy->sell churn unless stop loss breach
         "dry_run": false
     }
     """
@@ -51,8 +85,13 @@ def lambda_handler(event, context):
         mode = event.get('mode', 'paper')
         aggressiveness = event.get('aggressiveness', 'moderate')
         dry_run = event.get('dry_run', False)
+        min_hold_days = int(event.get('min_hold_days', os.environ.get('MIN_HOLD_DAYS', 2)))
+        avoid_same_day_exit = _as_bool(event.get('avoid_same_day_exit', os.environ.get('AVOID_SAME_DAY_EXIT', True)))
         
-        print(f"Starting daily review: mode={mode}, aggressiveness={aggressiveness}, dry_run={dry_run}")
+        print(
+            f"Starting daily review: mode={mode}, aggressiveness={aggressiveness}, dry_run={dry_run}, "
+            f"min_hold_days={min_hold_days}, avoid_same_day_exit={avoid_same_day_exit}"
+        )
         
         # Get thresholds (either from preset or custom)
         if aggressiveness in AGGRESSIVENESS_PRESETS:
@@ -75,14 +114,35 @@ def lambda_handler(event, context):
         from alpaca.trading.client import TradingClient
         from alpaca.data.historical import StockHistoricalDataClient
         from alpaca.data.requests import StockLatestQuoteRequest
-        from alpaca.trading.requests import MarketOrderRequest
-        from alpaca.trading.enums import OrderSide, TimeInForce
+        from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest
+        from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
         
         trading_client = TradingClient(api_key, api_secret, paper=(mode == 'paper'))
         data_client = StockHistoricalDataClient(api_key, api_secret)
         
         # Get current positions
         positions = trading_client.get_all_positions()
+
+        # Build latest buy timestamp map for anti-churn guards.
+        lookback_days = max(min_hold_days + 3, 7)
+        recent_orders = trading_client.get_orders(
+            GetOrdersRequest(
+                status=QueryOrderStatus.ALL,
+                after=datetime.now(timezone.utc) - timedelta(days=lookback_days),
+                direction='desc',
+                limit=500,
+            )
+        )
+        latest_buy_by_symbol = {}
+        for order in recent_orders:
+            if order.side != OrderSide.BUY:
+                continue
+            ts = order.filled_at or order.submitted_at
+            if ts is None:
+                continue
+            prev = latest_buy_by_symbol.get(order.symbol)
+            if prev is None or ts > prev:
+                latest_buy_by_symbol[order.symbol] = ts
         
         if not positions:
             print("No positions to review")
@@ -126,6 +186,12 @@ def lambda_handler(event, context):
             unrealized_plpc = float(position.unrealized_plpc)
             
             exit_reason = None
+            hard_risk_breach = False
+            rank_exit_reason = None
+            buy_ts = latest_buy_by_symbol.get(symbol)
+            held_days = None
+            if buy_ts is not None:
+                held_days = (datetime.now(timezone.utc) - buy_ts).total_seconds() / 86400.0
             
             # Check prediction rank (if we have predictions)
             if predictions_df is not None:
@@ -133,17 +199,32 @@ def lambda_handler(event, context):
                 if len(symbol_predictions) > 0:
                     rank = symbol_predictions.index[0] + 1  # 1-indexed rank
                     if rank > thresholds['min_prediction_rank']:
-                        exit_reason = f"Prediction rank dropped to {rank} (threshold: {thresholds['min_prediction_rank']})"
+                        rank_exit_reason = (
+                            f"Prediction rank dropped to {rank} (threshold: {thresholds['min_prediction_rank']})"
+                        )
                 else:
-                    exit_reason = f"Not in top predictions anymore"
+                    rank_exit_reason = "Not in top predictions anymore"
             
             # Check stop loss
             if unrealized_plpc <= (thresholds['stop_loss_pct'] / 100):
                 exit_reason = f"Stop loss triggered: {unrealized_plpc*100:.2f}% (threshold: {thresholds['stop_loss_pct']}%)"
+                hard_risk_breach = True
             
             # Check take profit
-            if unrealized_plpc >= (thresholds['take_profit_pct'] / 100):
+            elif unrealized_plpc >= (thresholds['take_profit_pct'] / 100):
                 exit_reason = f"Take profit triggered: {unrealized_plpc*100:.2f}% (threshold: {thresholds['take_profit_pct']}%)"
+
+            if exit_reason is None:
+                exit_reason = rank_exit_reason
+
+            if exit_reason and not hard_risk_breach and buy_ts is not None:
+                is_same_day = buy_ts.date() == datetime.now(timezone.utc).date()
+                if avoid_same_day_exit and is_same_day:
+                    print(f"Hold {symbol}: skipping same-day buy->sell churn guard ({exit_reason})")
+                    continue
+                if min_hold_days > 0 and held_days is not None and held_days < min_hold_days:
+                    print(f"Hold {symbol}: held {held_days:.2f}d < min_hold_days={min_hold_days} ({exit_reason})")
+                    continue
             
             if exit_reason:
                 exit_decisions.append({
@@ -152,6 +233,7 @@ def lambda_handler(event, context):
                     'current_price': current_price,
                     'avg_entry': avg_entry,
                     'unrealized_plpc': unrealized_plpc,
+                    'held_days': held_days,
                     'reason': exit_reason
                 })
         
@@ -241,7 +323,7 @@ Thresholds:
         sns_client.publish(
             TopicArn=alert_topic,
             Subject=f'🚨 Daily Review Failed ({mode.upper()})',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
@@ -249,6 +331,6 @@ Thresholds:
             'body': json.dumps({
                 'message': error_msg,
                 'mode': mode,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

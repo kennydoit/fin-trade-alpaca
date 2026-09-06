@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from sandbox.predict_short_term import prepare_features
+from yfinance.screener.predict_short_term import prepare_features
 
 
 def test_prepare_features_replaces_inf_and_nan_values():
@@ -16,8 +16,9 @@ def test_prepare_features_replaces_inf_and_nan_values():
         }
     )
 
-    X, feat_cols = prepare_features(df)
+    X, feat_cols, scaler = prepare_features(df)
 
+    assert scaler is None
     assert set(feat_cols) == {"ret_1d", "vol_10d", "price_sma10_z"}
     assert np.isfinite(X.to_numpy()).all()
     assert not np.any(np.isnan(X.to_numpy()))

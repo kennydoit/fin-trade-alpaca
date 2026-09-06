@@ -50,16 +50,35 @@ AGGRESSIVENESS_PRESETS = {
         "take_profit_pct": 5.0,
         "trailing_stop_pct": None,
     },
+    "tiered": {
+        "mode": "tiered",
+        "stop_loss_pct": -3.0,
+        "take_profit_pct": 7.0,
+        # Tiered ranking by performance:
+        # P&L > +5%: Only exit if rank > 30 (let winners run)
+        # P&L 0% to +5%: Exit if rank > 15 (moderate tolerance)
+        # P&L < 0%: Exit if rank > 10 (tight discipline on losers)
+        "tier_thresholds": [
+            {"min_pnl": 5.0, "max_rank": 30},   # Winners
+            {"min_pnl": 0.0, "max_rank": 15},   # Flat/small gains
+            {"min_pnl": -100.0, "max_rank": 10} # Losers
+        ]
+    },
 }
 
 
 def find_latest_predictions(reports_dir: Path):
-    """Find the most recent predictions CSV."""
+    """Find the most recent predictions CSV by modification time."""
     if not reports_dir.exists():
         return None
     
-    pred_files = sorted(reports_dir.glob("predictions_*.csv"))
-    return pred_files[-1] if pred_files else None
+    pred_files = list(reports_dir.glob("predictions_*.csv"))
+    if not pred_files:
+        return None
+    
+    # Sort by modification time (most recent first)
+    pred_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    return pred_files[0]
 
 
 def load_predictions(csv_path: Path) -> pd.DataFrame:
@@ -94,13 +113,7 @@ def evaluate_position_exit(
     avg_entry = float(position.avg_entry_price)
     pnl_pct = ((current_price - avg_entry) / avg_entry) * 100
     
-    # Check prediction-based exit
-    min_rank = config.get("min_prediction_rank")
-    if min_rank and prediction_rank is not None:
-        if prediction_rank > min_rank:
-            return True, f"Dropped to rank #{prediction_rank} (min: {min_rank})"
-    
-    # Check price-based exits
+    # Always check stop-loss and take-profit first (hard limits)
     stop_loss = config.get("stop_loss_pct")
     if stop_loss and pnl_pct <= stop_loss:
         return True, f"Hit stop loss: {pnl_pct:.2f}% (threshold: {stop_loss}%)"
@@ -109,9 +122,32 @@ def evaluate_position_exit(
     if take_profit and pnl_pct >= take_profit:
         return True, f"Hit take profit: {pnl_pct:.2f}% (threshold: {take_profit}%)"
     
-    # Check if not in predictions at all (if predictions available)
-    if min_rank and prediction_rank is None:
+    # Check if not in predictions at all -- but only treat this as an exit
+    # trigger when the config actually uses rank-based exit criteria. A
+    # position shouldn't be force-sold just because it's momentarily missing
+    # from the predictions CSV when the run is only configured for price-based
+    # (stop-loss/take-profit) exits.
+    uses_rank_criteria = config.get("mode") == "tiered" or config.get("min_prediction_rank") is not None
+    if uses_rank_criteria and prediction_rank is None:
         return True, "Not in current predictions"
+    
+    # Tiered mode: Different rank thresholds based on P&L performance
+    if config.get("mode") == "tiered":
+        tier_thresholds = config.get("tier_thresholds", [])
+        for tier in tier_thresholds:
+            if pnl_pct >= tier["min_pnl"]:
+                max_rank = tier["max_rank"]
+                if prediction_rank > max_rank:
+                    return True, f"Dropped to rank #{prediction_rank} (P&L {pnl_pct:+.2f}% allows max rank {max_rank})"
+                else:
+                    return False, ""  # Position passes this tier
+        return False, ""  # No tier matched, hold position
+    
+    # Standard mode: Simple rank threshold
+    min_rank = config.get("min_prediction_rank")
+    if min_rank and prediction_rank is not None:
+        if prediction_rank > min_rank:
+            return True, f"Dropped to rank #{prediction_rank} (min: {min_rank})"
     
     return False, ""
 
@@ -126,6 +162,7 @@ Aggressiveness Presets:
   conservative: Exit if rank > 20 OR P&L < -5%
   moderate:     Exit if rank > 10 OR P&L < -3%
   aggressive:   Exit if rank > 5 OR P&L < -2%
+  tiered:       P&L > +5%: max rank 30 | P&L 0-5%: max rank 15 | P&L < 0%: max rank 10
   custom:       Use --min-rank, --stop-pct, --take-pct
 
 Examples:
@@ -142,7 +179,7 @@ Examples:
     parser.add_argument("--mode", choices=["paper", "live"], default="paper", help="Trading mode")
     parser.add_argument(
         "--aggressiveness",
-        choices=["conservative", "moderate", "aggressive", "custom"],
+        choices=["conservative", "moderate", "aggressive", "tiered", "custom"],
         default="moderate",
         help="Exit aggressiveness preset"
     )
@@ -200,7 +237,11 @@ Examples:
     
     # Load predictions
     predictions_df = None
-    if config.get("min_prediction_rank"):
+    # Load predictions if we're using prediction-based exits (any mode except pure price-based)
+    needs_predictions = (config.get("min_prediction_rank") or 
+                        config.get("mode") == "tiered")
+    
+    if needs_predictions:
         repo_root = Path(__file__).resolve().parents[1]
         if args.predictions:
             pred_path = Path(args.predictions)

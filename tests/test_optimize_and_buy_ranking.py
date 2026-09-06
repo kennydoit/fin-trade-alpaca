@@ -2,10 +2,9 @@ import csv
 import sys
 from pathlib import Path
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import runners.optimize_and_buy as optimize_and_buy
+from runners import optimize_and_buy
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:

@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import boto3
+from botocore.exceptions import ClientError
 
 # Add source code to path
 sys.path.insert(0, '/opt/python')  # Lambda layer
@@ -46,8 +47,11 @@ def lambda_handler(event, context):
         try:
             s3_client.download_file(bucket_name, config_s3_key, config_local_path)
             print(f"Downloaded config from s3://{bucket_name}/{config_s3_key}")
-        except s3_client.exceptions.NoSuchKey:
-            raise ValueError(f"Config file not found: s3://{bucket_name}/{config_s3_key}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                raise ValueError(f"Config file not found: s3://{bucket_name}/{config_s3_key}")
+            else:
+                raise
         
         # Create temp directory for outputs
         output_dir = '/tmp/screener_results'
@@ -57,14 +61,21 @@ def lambda_handler(event, context):
         sys.argv = [
             'yfinance_growth_screener',
             '--config', config_local_path,
-            '--output-dir', output_dir
+            '--out', output_dir + '/equity_screener.csv'
         ]
         
         # Execute the screener
         run_growth_screener()
         
-        # Find the generated CSV file (most recent)
-        csv_files = list(Path(output_dir).glob('equity_screener_*.csv'))
+        # Find the deduplicated CSV file (most recent)
+        # Screener creates: equity_screener_YYYYMMDD_ranked_deduped_YYYYMMDD.csv
+        csv_files = list(Path(output_dir).glob('*_ranked_deduped_*.csv'))
+        if not csv_files:
+            # Fallback to ranked file if dedup not enabled
+            csv_files = list(Path(output_dir).glob('*_ranked.csv'))
+        if not csv_files:
+            # Final fallback to any equity screener file
+            csv_files = list(Path(output_dir).glob('equity_screener_*.csv'))
         if not csv_files:
             raise ValueError("No equity screener CSV file generated")
         
@@ -117,13 +128,13 @@ Top 5 Candidates:
         sns_client.publish(
             TopicArn=alert_topic,
             Subject='🚨 Equity Screener Failed',
-            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.request_id}"
+            Message=f"{error_msg}\n\nFunction: {context.function_name}\nRequest ID: {context.aws_request_id}"
         )
         
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'message': error_msg,
-                'request_id': context.request_id
+                'request_id': context.aws_request_id
             })
         }

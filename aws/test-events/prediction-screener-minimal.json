@@ -1,0 +1,6 @@
+{
+  "run_type": "adhoc",
+  "limit": 10,
+  "return_days": 5,
+  "lookback": 30
+}

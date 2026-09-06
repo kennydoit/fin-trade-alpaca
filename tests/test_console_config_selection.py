@@ -11,10 +11,12 @@ from console.console import get_config_list, print_menu
 def test_get_config_list_reads_json_arrays(tmp_path):
     config_path = tmp_path / "equity_screener.json"
     config_path.write_text(
-        json.dumps({
-            "sector_choices": ["Technology", "Healthcare", "Financial Services"],
-            "industry_choices": ["Software - Infrastructure"],
-        }),
+        json.dumps(
+            {
+                "sector_choices": ["Technology", "Healthcare", "Financial Services"],
+                "industry_choices": ["Software - Infrastructure"],
+            }
+        ),
         encoding="utf-8",
     )
 
