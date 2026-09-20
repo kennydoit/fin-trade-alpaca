@@ -73,6 +73,11 @@ def get_ml_prediction(symbol, lookback_days=60):
         return 0.0
 
 
+def _json_body(payload):
+    """Serialize Lambda response payloads safely for SDK objects (UUID, datetime, Decimal)."""
+    return json.dumps(payload, default=str)
+
+
 def lambda_handler(event, context):
     """
     Lambda handler for portfolio monitoring and sell execution.
@@ -133,7 +138,7 @@ def lambda_handler(event, context):
             print("No positions to monitor")
             return {
                 'statusCode': 200,
-                'body': json.dumps({
+                'body': _json_body({
                     'message': 'No positions to monitor',
                     'mode': mode
                 })
@@ -280,11 +285,11 @@ Holds: {len(holds)}
             'timestamp': datetime.now().isoformat()
         }
         
-        print(f"Monitor summary: {json.dumps(summary, indent=2)}")
+        print(f"Monitor summary: {json.dumps(summary, indent=2, default=str)}")
         
         return {
             'statusCode': 200,
-            'body': json.dumps(summary)
+            'body': _json_body(summary)
         }
         
     except Exception as e:
@@ -300,7 +305,7 @@ Holds: {len(holds)}
         
         return {
             'statusCode': 500,
-            'body': json.dumps({
+            'body': _json_body({
                 'message': error_msg,
                 'mode': mode,
                 'request_id': context.aws_request_id

@@ -55,6 +55,11 @@ def _as_bool(value, default=True):
     return bool(value)
 
 
+def _json_body(payload):
+    """Serialize Lambda response payloads safely for SDK objects (UUID, datetime, Decimal)."""
+    return json.dumps(payload, default=str)
+
+
 def lambda_handler(event, context):
     """
     Lambda handler for daily portfolio review.
@@ -148,7 +153,7 @@ def lambda_handler(event, context):
             print("No positions to review")
             return {
                 'statusCode': 200,
-                'body': json.dumps({
+                'body': _json_body({
                     'message': 'No positions to review',
                     'mode': mode
                 })
@@ -303,7 +308,7 @@ Thresholds:
         
         return {
             'statusCode': 200,
-            'body': json.dumps({
+            'body': _json_body({
                 'message': f'Daily review completed {"(dry run)" if dry_run else ""}',
                 'mode': mode,
                 'positions_reviewed': len(positions),
@@ -328,7 +333,7 @@ Thresholds:
         
         return {
             'statusCode': 500,
-            'body': json.dumps({
+            'body': _json_body({
                 'message': error_msg,
                 'mode': mode,
                 'request_id': context.aws_request_id

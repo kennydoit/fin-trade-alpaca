@@ -21,6 +21,11 @@ def get_alpaca_credentials(secrets_client, secret_name):
     return secret['key'], secret['secret']
 
 
+def _json_body(payload):
+    """Serialize Lambda response payloads safely for SDK objects (UUID, datetime, Decimal)."""
+    return json.dumps(payload, default=str)
+
+
 def lambda_handler(event, context):
     """
     Lambda handler for adding position protections.
@@ -80,7 +85,7 @@ def lambda_handler(event, context):
             print(f"No positions found{' for symbols: ' + str(symbols) if symbols else ''}")
             return {
                 'statusCode': 200,
-                'body': json.dumps({
+                'body': _json_body({
                     'message': 'No positions to protect',
                     'mode': mode
                 })
@@ -185,7 +190,7 @@ Protected Positions:
         
         return {
             'statusCode': 200,
-            'body': json.dumps({
+            'body': _json_body({
                 'message': f'Protections {"simulated" if dry_run else "added"} for {len(protections_added)} positions',
                 'mode': mode,
                 'protected_count': len(protections_added),
@@ -209,7 +214,7 @@ Protected Positions:
         
         return {
             'statusCode': 500,
-            'body': json.dumps({
+            'body': _json_body({
                 'message': error_msg,
                 'mode': mode,
                 'request_id': context.aws_request_id
