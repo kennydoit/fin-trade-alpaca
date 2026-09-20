@@ -255,7 +255,7 @@ def lambda_handler(event, context):
                             time_in_force=TimeInForce.DAY
                         )
                     )
-                    exit_decision['order_id'] = order.id
+                    exit_decision['order_id'] = str(order.id)
                     executed_exits.append(exit_decision)
                     print(f"Submitted exit order for {symbol}: {qty} shares")
                 else:
