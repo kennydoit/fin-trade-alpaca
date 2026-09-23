@@ -21,6 +21,44 @@ def get_alpaca_credentials(secrets_client, secret_name):
     return secret['key'], secret['secret']
 
 
+def _enum_value(value):
+    """Normalize Alpaca SDK enums or plain values to lowercase strings."""
+    raw = getattr(value, 'value', value)
+    if raw is None:
+        return ''
+    return str(raw).strip().lower()
+
+
+def _order_trigger_label(order):
+    """Infer a user-friendly liquidation trigger from the submitted order type."""
+    order_type = _enum_value(getattr(order, 'type', None))
+
+    if order_type == 'stop':
+        stop_price = getattr(order, 'stop_price', None)
+        if stop_price is not None:
+            return f"stop loss @ ${float(stop_price):.2f}"
+        return 'stop loss'
+
+    if order_type == 'limit':
+        limit_price = getattr(order, 'limit_price', None)
+        if limit_price is not None:
+            return f"take profit @ ${float(limit_price):.2f}"
+        return 'take profit'
+
+    if order_type == 'stop_limit':
+        stop_price = getattr(order, 'stop_price', None)
+        limit_price = getattr(order, 'limit_price', None)
+        parts = []
+        if stop_price is not None:
+            parts.append(f"stop=${float(stop_price):.2f}")
+        if limit_price is not None:
+            parts.append(f"limit=${float(limit_price):.2f}")
+        suffix = f" ({', '.join(parts)})" if parts else ''
+        return f"stop/limit exit{suffix}"
+
+    return 'market/manual exit'
+
+
 def lambda_handler(event, context):
     """
     Lambda handler for daily summary.
@@ -84,11 +122,17 @@ def lambda_handler(event, context):
         total_unrealized_plpc = (total_unrealized_pl / total_cost_basis * 100) if total_cost_basis != 0 else 0
         
         # Count orders by status
-        filled_orders = [o for o in recent_orders if str(o.status) == 'filled']
-        pending_orders = [o for o in recent_orders if str(o.status) in ['new', 'accepted', 'pending_new']]
-        cancelled_orders = [o for o in recent_orders if str(o.status) in ['canceled', 'cancelled']]
-        buy_fills = [o for o in filled_orders if str(o.side).upper() == 'BUY']
-        sell_fills = [o for o in filled_orders if str(o.side).upper() == 'SELL']
+        filled_orders = [o for o in recent_orders if _enum_value(getattr(o, 'status', None)) == 'filled']
+        pending_orders = [
+            o for o in recent_orders
+            if _enum_value(getattr(o, 'status', None)) in {'new', 'accepted', 'pending_new'}
+        ]
+        cancelled_orders = [
+            o for o in recent_orders
+            if _enum_value(getattr(o, 'status', None)) in {'canceled', 'cancelled'}
+        ]
+        buy_fills = [o for o in filled_orders if _enum_value(getattr(o, 'side', None)) == 'buy']
+        sell_fills = [o for o in filled_orders if _enum_value(getattr(o, 'side', None)) == 'sell']
 
         def _order_value(order):
             qty = float(getattr(order, 'filled_qty', 0) or 0)
@@ -105,7 +149,7 @@ def lambda_handler(event, context):
 
         realized_pnl = 0.0
         for order in filled_orders:
-            if str(order.side).upper() == 'SELL':
+            if _enum_value(getattr(order, 'side', None)) == 'sell':
                 realized_pnl += float(getattr(order, 'realized_pnl', 0) or 0)
 
         if positions:
@@ -206,19 +250,33 @@ Realized P&L:       ${realized_pnl:,.2f}
             report += "\nRecent Fills:\n"
             for order in filled_orders[:6]:  # Show the latest fills
                 symbol = order.symbol
-                side = str(order.side).upper()
+                side = _enum_value(getattr(order, 'side', None)).upper()
                 qty = float(order.filled_qty) if order.filled_qty else 0
                 fill_price = float(order.filled_avg_price) if order.filled_avg_price else 0
                 filled_at = order.filled_at.strftime('%H:%M') if order.filled_at else 'N/A'
                 report += f"  • {filled_at} | {side:4s} {qty:8.2f} {symbol:6s} @ ${fill_price:7.2f}\n"
+
+        if sell_fills:
+            report += "\nLiquidations:\n"
+            for order in sell_fills[:6]:
+                symbol = order.symbol
+                qty = float(order.filled_qty) if order.filled_qty else 0
+                fill_price = float(order.filled_avg_price) if order.filled_avg_price else 0
+                filled_at = order.filled_at.strftime('%H:%M') if order.filled_at else 'N/A'
+                realized = float(getattr(order, 'realized_pnl', 0) or 0)
+                trigger = _order_trigger_label(order)
+                report += (
+                    f"  • {filled_at} | SOLD {qty:8.2f} {symbol:6s} @ ${fill_price:7.2f}"
+                    f" | Trigger: {trigger} | Realized P&L: ${realized:,.2f}\n"
+                )
         
         if pending_orders:
             report += "\nPending Orders:\n"
             for order in pending_orders[:5]:
                 symbol = order.symbol
-                side = str(order.side).upper()
+                side = _enum_value(getattr(order, 'side', None)).upper()
                 qty = float(order.qty) if order.qty else 0
-                order_type = str(order.type).upper()
+                order_type = _enum_value(getattr(order, 'type', None)).upper()
                 report += f"  • {order_type:6s} | {side:4s} {qty:8.2f} {symbol}\n"
         
         # Add performance indicators

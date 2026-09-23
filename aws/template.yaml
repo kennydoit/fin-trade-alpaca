@@ -109,6 +109,13 @@ Resources:
       Description: Alpaca Live Trading API Key
       SecretString: '{"key":"REPLACE_WITH_YOUR_KEY","secret":"REPLACE_WITH_YOUR_SECRET"}'
 
+  PerplexityApiKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'perplexity-api-key-${Environment}'
+      Description: Perplexity API Key for optional AI decision layer
+      SecretString: '{"key":"REPLACE_WITH_YOUR_PERPLEXITY_KEY"}'
+
   # Lambda Layer for dependencies
   DependenciesLayer:
     Type: AWS::Serverless::LayerVersion
@@ -155,6 +162,7 @@ Resources:
                 Resource:
                   - !Ref AlpacaPaperApiKey
                   - !Ref AlpacaLiveApiKey
+                  - !Ref PerplexityApiKey
               - Effect: Allow
                 Action:
                   - sns:Publish
@@ -209,6 +217,40 @@ Resources:
           STRATEGY_CONFIG_PATH: configs/strategy.json
           ALPACA_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
           ALPACA_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+          PERPLEXITY_SECRET_NAME: !Ref PerplexityApiKey
+
+  StatarbOptimizeBuyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-statarb-optimize-buy-${Environment}'
+      CodeUri: functions/statarb_optimize_buy/
+      Handler: handler.lambda_handler
+      Description: Statarb pair optimization and order submission
+      Role: !GetAtt LambdaExecutionRole.Arn
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          STATARB_CONFIG_PATH: configs/statarb_strategy.json
+          STATARB_RESULTS_PREFIX: statarb_results/pairs_
+          STATARB_PAPER_SECRET_NAME: !Ref AlpacaPaperApiKey
+          STATARB_LIVE_SECRET_NAME: !Ref AlpacaLiveApiKey
+
+  StatarbScreenerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trading-statarb-screener-${Environment}'
+      CodeUri: functions/statarb_screener/
+      Handler: handler.lambda_handler
+      Description: Generate statarb pair candidates from dedicated universe
+      Role: !GetAtt LambdaExecutionRole.Arn
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn: !Ref AlertTopic
+      Environment:
+        Variables:
+          STATARB_SCREENER_CONFIG_PATH: configs/statarb_screener.json
 
   PortfolioMonitorFunction:
     Type: AWS::Serverless::Function
@@ -279,8 +321,8 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub 'prediction-screener-schedule-${Environment}'
-      Description: Run prediction screener daily at 9:30 AM ET weekdays (after equity screener)
-      ScheduleExpression: 'cron(30 13 ? * MON-FRI *)'  # 9:30 AM ET = 1:30 PM UTC
+      Description: Run prediction screener daily on a fixed 13:30 UTC weekday schedule
+      ScheduleExpression: 'cron(30 13 ? * MON-FRI *)'  # Fixed UTC schedule; maps to 9:30 AM during US daylight time
       State: ENABLED
       Targets:
         - Arn: !GetAtt PredictionScreenerFunction.Arn
@@ -299,8 +341,8 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub 'equity-screener-schedule-${Environment}'
-      Description: Run equity screener daily at 9:00 AM ET weekdays
-      ScheduleExpression: 'cron(0 13 ? * MON-FRI *)'  # 9:00 AM ET = 1:00 PM UTC
+      Description: Run equity screener daily on a fixed 13:00 UTC weekday schedule
+      ScheduleExpression: 'cron(0 13 ? * MON-FRI *)'  # Fixed UTC schedule; maps to 9:00 AM during US daylight time
       State: ENABLED
       Targets:
         - Arn: !GetAtt EquityScreenerFunction.Arn
@@ -319,13 +361,13 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub 'optimize-buy-schedule-${Environment}'
-      Description: Run optimize and buy at 9:45 AM ET weekdays
-      ScheduleExpression: 'cron(45 14 ? * MON-FRI *)'  # 9:45 AM ET = 2:45 PM UTC
+      Description: Run optimize and buy on a fixed 14:45 UTC weekday schedule (after pre-buy liquidation review)
+      ScheduleExpression: 'cron(45 14 ? * MON-FRI *)'  # Fixed UTC schedule; currently 10:45 AM during US daylight time
       State: ENABLED
       Targets:
         - Arn: !GetAtt OptimizeAndBuyFunction.Arn
           Id: OptimizeAndBuyTarget
-          Input: '{"run_type": "scheduled", "mode": "paper"}'
+          Input: '{"run_type": "scheduled", "mode": "paper", "sell_cooldown_days_override": 0, "wait_for_sell_orders": true, "sell_order_wait_timeout_seconds": 600, "sell_order_poll_interval_seconds": 10}'
 
   OptimizeAndBuyPermission:
     Type: AWS::Lambda::Permission
@@ -335,17 +377,39 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt OptimizeAndBuySchedule.Arn
 
+  # Statarb optimize/buy is manual-first for now; no EventBridge schedule yet.
+
+  PreBuyLiquidationSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'pre-buy-liquidation-schedule-${Environment}'
+      Description: Run liquidation review on a fixed 14:35 UTC weekday schedule before optimize-and-buy
+      ScheduleExpression: 'cron(35 14 ? * MON-FRI *)'  # Fixed UTC schedule; currently 10:35 AM during US daylight time
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt DailyReviewFunction.Arn
+          Id: PreBuyLiquidationTarget
+          Input: '{"mode": "paper", "aggressiveness": "moderate", "dry_run": false, "min_hold_days": 0, "avoid_same_day_exit": false, "run_context": "pre_buy"}'
+
+  PreBuyLiquidationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailyReviewFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PreBuyLiquidationSchedule.Arn
+
   PortfolioMonitorSchedule:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub 'portfolio-monitor-schedule-${Environment}'
-      Description: Monitor portfolio every hour during market hours
-      ScheduleExpression: 'cron(0 14-21 ? * MON-FRI *)'  # 9:30 AM - 4:30 PM ET = 2:30 PM - 9:30 PM UTC
+      Description: Monitor portfolio every 5 minutes on a fixed UTC weekday schedule
+      ScheduleExpression: 'cron(0/5 14-21 ? * MON-FRI *)'  # Fixed UTC schedule; shifts by daylight-saving season
       State: ENABLED
       Targets:
         - Arn: !GetAtt PortfolioMonitorFunction.Arn
           Id: PortfolioMonitorTarget
-          Input: '{"mode": "paper"}'
+          Input: '{"mode": "paper", "fill_notification_lookback_minutes": 15}'
 
   PortfolioMonitorPermission:
     Type: AWS::Lambda::Permission
@@ -359,8 +423,8 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub 'daily-review-schedule-${Environment}'
-      Description: Run daily portfolio review at 4:15 PM ET weekdays
-      ScheduleExpression: 'cron(15 21 ? * MON-FRI *)'  # 4:15 PM ET = 9:15 PM UTC
+      Description: Run daily portfolio review on a fixed 21:15 UTC weekday schedule
+      ScheduleExpression: 'cron(15 21 ? * MON-FRI *)'  # Fixed UTC schedule; shifts by daylight-saving season
       State: ENABLED
       Targets:
         - Arn: !GetAtt DailyReviewFunction.Arn
@@ -379,8 +443,8 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: !Sub 'daily-summary-schedule-${Environment}'
-      Description: Generate daily summary at 5:00 PM ET weekdays
-      ScheduleExpression: 'cron(0 22 ? * MON-FRI *)'  # 5:00 PM ET = 10:00 PM UTC
+      Description: Generate daily summary on a fixed 22:00 UTC weekday schedule
+      ScheduleExpression: 'cron(0 22 ? * MON-FRI *)'  # Fixed UTC schedule; shifts by daylight-saving season
       State: ENABLED
       Targets:
         - Arn: !GetAtt DailySummaryFunction.Arn
@@ -460,6 +524,14 @@ Outputs:
   OptimizeAndBuyFunctionArn:
     Description: Optimize and buy Lambda function
     Value: !GetAtt OptimizeAndBuyFunction.Arn
+
+  StatarbOptimizeBuyFunctionArn:
+    Description: Statarb optimize and buy Lambda function
+    Value: !GetAtt StatarbOptimizeBuyFunction.Arn
+
+  StatarbScreenerFunctionArn:
+    Description: Statarb screener Lambda function
+    Value: !GetAtt StatarbScreenerFunction.Arn
 
   DashboardUrl:
     Description: CloudWatch Dashboard URL

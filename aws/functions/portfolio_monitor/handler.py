@@ -9,7 +9,7 @@ Monitors positions and executes sells based on:
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import boto3
 import sqlite3
@@ -20,8 +20,12 @@ sys.path.insert(0, '/opt/python')  # Lambda layer
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import QueryOrderStatus
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
+
+
+LIQUIDATION_NOTIFICATION_PREFIX = 'notifications/liquidation_fills'
 
 
 def get_alpaca_credentials(secrets_client, secret_name):
@@ -78,6 +82,129 @@ def _json_body(payload):
     return json.dumps(payload, default=str)
 
 
+def _enum_value(value):
+    raw = getattr(value, 'value', value)
+    if raw is None:
+        return ''
+    return str(raw).strip().lower()
+
+
+def _order_trigger_label(order):
+    order_type = _enum_value(getattr(order, 'type', None))
+
+    if order_type == 'stop':
+        stop_price = getattr(order, 'stop_price', None)
+        if stop_price is not None:
+            return f"stop loss @ ${float(stop_price):.2f}"
+        return 'stop loss'
+
+    if order_type == 'limit':
+        limit_price = getattr(order, 'limit_price', None)
+        if limit_price is not None:
+            return f"take profit @ ${float(limit_price):.2f}"
+        return 'take profit'
+
+    if order_type == 'stop_limit':
+        stop_price = getattr(order, 'stop_price', None)
+        limit_price = getattr(order, 'limit_price', None)
+        parts = []
+        if stop_price is not None:
+            parts.append(f"stop=${float(stop_price):.2f}")
+        if limit_price is not None:
+            parts.append(f"limit=${float(limit_price):.2f}")
+        suffix = f" ({', '.join(parts)})" if parts else ''
+        return f"stop/limit exit{suffix}"
+
+    return 'market/manual exit'
+
+
+def _notification_state_key(mode):
+    return f"{LIQUIDATION_NOTIFICATION_PREFIX}/{mode.lower()}_notified.json"
+
+
+def load_notified_fill_ids(s3_client, bucket_name, mode):
+    key = _notification_state_key(mode)
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+    except ClientError as ex:
+        error_code = ex.response.get('Error', {}).get('Code', '')
+        if error_code in {'NoSuchKey', '404', 'NotFound'}:
+            return set()
+        raise
+
+    payload = json.loads(response['Body'].read().decode('utf-8'))
+    raw_ids = payload.get('order_ids', []) if isinstance(payload, dict) else []
+    return {str(order_id) for order_id in raw_ids if order_id}
+
+
+def save_notified_fill_ids(s3_client, bucket_name, mode, order_ids):
+    key = _notification_state_key(mode)
+    payload = {
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+        'order_ids': sorted({str(order_id) for order_id in order_ids if order_id})[-500:],
+    }
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=key,
+        Body=json.dumps(payload).encode('utf-8'),
+        ContentType='application/json',
+    )
+
+
+def find_new_sell_fills(trading_client, notified_order_ids, lookback_minutes):
+    after_dt = datetime.now(timezone.utc) - timedelta(minutes=max(1, int(lookback_minutes)))
+    from alpaca.trading.requests import GetOrdersRequest
+
+    order_request = GetOrdersRequest(
+        status=QueryOrderStatus.ALL,
+        after=after_dt,
+        limit=200,
+        direction='desc',
+    )
+    recent_orders = trading_client.get_orders(filter=order_request)
+
+    sell_fills = []
+    for order in recent_orders:
+        if _enum_value(getattr(order, 'status', None)) != 'filled':
+            continue
+        if _enum_value(getattr(order, 'side', None)) != 'sell':
+            continue
+        order_id = str(getattr(order, 'id', ''))
+        if not order_id or order_id in notified_order_ids:
+            continue
+        sell_fills.append(order)
+
+    sell_fills.sort(key=lambda order: getattr(order, 'filled_at', None) or getattr(order, 'submitted_at', None) or after_dt)
+    return sell_fills
+
+
+def build_fill_notification_message(mode, filled_sell_orders):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    lines = [
+        'Liquidation Fill Alert',
+        '',
+        f"Mode: {mode.upper()}",
+        f"Timestamp: {timestamp}",
+        f"Liquidations Filled: {len(filled_sell_orders)}",
+        '',
+        'Filled Orders:',
+    ]
+
+    for order in filled_sell_orders:
+        symbol = getattr(order, 'symbol', '?')
+        qty = float(getattr(order, 'filled_qty', 0) or 0)
+        fill_price = float(getattr(order, 'filled_avg_price', 0) or 0)
+        fill_time = getattr(order, 'filled_at', None)
+        fill_time_text = fill_time.strftime('%Y-%m-%d %H:%M:%S') if fill_time else 'N/A'
+        trigger = _order_trigger_label(order)
+        realized_pnl = float(getattr(order, 'realized_pnl', 0) or 0)
+        lines.append(
+            f"- {symbol}: SOLD {qty:.2f} @ ${fill_price:.2f} | Trigger: {trigger} | Realized P&L: ${realized_pnl:,.2f} | Filled: {fill_time_text}"
+        )
+
+    return '\n'.join(lines)
+
+
 def lambda_handler(event, context):
     """
     Lambda handler for portfolio monitoring and sell execution.
@@ -104,8 +231,12 @@ def lambda_handler(event, context):
         mode = event.get('mode', 'paper')
         ml_sell_threshold = event.get('ml_sell_threshold', -0.05)
         check_ml = event.get('check_ml_predictions', False)
+        fill_notification_lookback_minutes = int(event.get('fill_notification_lookback_minutes', 30))
         
-        print(f"Starting portfolio monitor: mode={mode}, trading_enabled={trading_enabled}, ml_check={check_ml}")
+        print(
+            f"Starting portfolio monitor: mode={mode}, trading_enabled={trading_enabled}, ml_check={check_ml}, "
+            f"fill_notification_lookback_minutes={fill_notification_lookback_minutes}"
+        )
         
         # Download portfolio database from S3
         db_local_path = '/tmp/portfolio.db'
@@ -130,6 +261,23 @@ def lambda_handler(event, context):
         
         # Initialize Alpaca client
         trading_client = TradingClient(api_key, api_secret, paper=(mode == 'paper'))
+
+        notified_fill_ids = load_notified_fill_ids(s3_client, bucket_name, mode)
+        new_sell_fills = find_new_sell_fills(
+            trading_client,
+            notified_order_ids=notified_fill_ids,
+            lookback_minutes=fill_notification_lookback_minutes,
+        )
+        if new_sell_fills:
+            fill_message = build_fill_notification_message(mode, new_sell_fills)
+            sns_client.publish(
+                TopicArn=alert_topic,
+                Subject=f'💸 Liquidations Filled ({mode.upper()}) - {len(new_sell_fills)} orders',
+                Message=fill_message,
+            )
+            new_fill_ids = {str(getattr(order, 'id', '')) for order in new_sell_fills if getattr(order, 'id', None)}
+            save_notified_fill_ids(s3_client, bucket_name, mode, notified_fill_ids.union(new_fill_ids))
+            print(f"Sent liquidation fill notification for {len(new_sell_fills)} filled sell orders")
         
         # Get current positions
         positions = trading_client.get_all_positions()
@@ -140,7 +288,8 @@ def lambda_handler(event, context):
                 'statusCode': 200,
                 'body': _json_body({
                     'message': 'No positions to monitor',
-                    'mode': mode
+                    'mode': mode,
+                    'liquidation_fill_notifications': len(new_sell_fills),
                 })
             }
         
@@ -282,6 +431,7 @@ Holds: {len(holds)}
             'sells': len(sell_actions),
             'holds': len(holds),
             'sell_actions': sell_actions,
+            'liquidation_fill_notifications': len(new_sell_fills),
             'timestamp': datetime.now().isoformat()
         }
         
