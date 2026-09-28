@@ -69,7 +69,9 @@ Write-Host "Preparing function code..." -ForegroundColor Blue
 $functions = @(
     "prediction_screener",
     "equity_screener",
+    "statarb_screener",
     "optimize_and_buy",
+    "statarb_optimize_buy",
     "portfolio_monitor",
     "add_protections",
     "daily_review",

@@ -77,6 +77,12 @@ def build_dataset(  # noqa: PLR0915 - sequential dataset-construction pipeline; 
     symbols_skipped_short = 0
     symbols_no_training_window = 0
 
+    symbol_meta = cand_df.copy()
+    if not symbol_meta.empty:
+        symbol_meta["symbol"] = symbol_meta["symbol"].astype(str).str.upper()
+        if "date" in symbol_meta.columns:
+            symbol_meta["date"] = pd.to_datetime(symbol_meta["date"], errors="coerce")
+
     for sym in symbols:
         if sym not in adj.columns:
             continue
@@ -93,21 +99,28 @@ def build_dataset(  # noqa: PLR0915 - sequential dataset-construction pipeline; 
             symbols_no_training_window += 1
             continue
 
-        row_meta = cand_df[cand_df["symbol"].astype(str) == sym]
+        row_meta = symbol_meta[symbol_meta["symbol"].astype(str) == sym] if not symbol_meta.empty else pd.DataFrame()
         for t_idx in range(30, len(tech) - return_days):
             date = tech.index[t_idx]
             feat_row = tech.iloc[t_idx].to_dict()
             future_price = series.iloc[t_idx + return_days]
             price = series.iloc[t_idx]
             fwd_ret = (future_price / price) - 1.0
-            meta = {}
-            if not row_meta.empty:
-                for col in _CANDIDATE_METADATA_COLUMNS:
-                    if col in row_meta.columns:
-                        val = row_meta.iloc[0].get(col)
-                        if isinstance(val, (int, float)) and np.isinf(val):
-                            val = np.nan
-                        meta[col] = val
+            meta = {col: np.nan for col in _CANDIDATE_METADATA_COLUMNS if col in row_meta.columns}
+            if not row_meta.empty and "date" in row_meta.columns:
+                candidate_dates = row_meta["date"].dropna()
+                if not candidate_dates.empty:
+                    candidate_snapshot = row_meta[row_meta["date"].eq(pd.Timestamp(date))]
+                    if candidate_snapshot.empty:
+                        recent_snapshot = row_meta[row_meta["date"] <= pd.Timestamp(date)].sort_values("date")
+                        candidate_snapshot = recent_snapshot.iloc[[-1]] if not recent_snapshot.empty else pd.DataFrame()
+                    if not candidate_snapshot.empty:
+                        for col in _CANDIDATE_METADATA_COLUMNS:
+                            if col in candidate_snapshot.columns:
+                                val = candidate_snapshot.iloc[0].get(col)
+                                if isinstance(val, (int, float)) and np.isinf(val):
+                                    val = np.nan
+                                meta[col] = val
             rec = {"date": date, "symbol": sym, "fwd_ret": fwd_ret}
             rec.update({k: (v if v is not None else np.nan) for k, v in feat_row.items()})
             rec.update(meta)

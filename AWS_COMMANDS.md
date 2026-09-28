@@ -12,6 +12,38 @@ $region = "us-east-1"
 aws sts get-caller-identity
 ```
 
+## Reliable Manual Trigger (Recommended)
+
+Use the bundled retrying trigger script instead of one-off `aws lambda invoke` calls.
+
+```powershell
+# Default chain: equity-screener -> prediction-screener -> optimize-buy
+powershell -ExecutionPolicy Bypass -File aws/trigger-jobs.ps1 `
+  -Environment dev `
+  -Region us-east-1 `
+  -Mode paper `
+  -DryRun $true
+```
+
+Run any subset of jobs with retries and optional logs:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File aws/trigger-jobs.ps1 `
+  -Jobs equity-screener,prediction-screener,statarb-screener,statarb-optimize-buy `
+  -Environment dev `
+  -Region us-east-1 `
+  -Mode paper `
+  -DryRun $true `
+  -MaxAttempts 4 `
+  -RetryDelaySeconds 15 `
+  -TailLogs
+```
+
+Notes:
+- Payload and response JSON files are written under `aws/dist/manual_triggers/<timestamp>/`.
+- The script stops on first failure and exits non-zero for CI/manual safety.
+- For real order submission, set `-DryRun $false` and confirm `TRADING_ENABLED=true` on the target function.
+
 ---
 
 ## 1. Equity Screener
@@ -388,6 +420,29 @@ aws secretsmanager update-secret `
   --region us-east-1
 ```
 
+### Optional: Enable AI Layer (Perplexity)
+
+```powershell
+# Store Perplexity key in Secrets Manager
+aws secretsmanager create-secret `
+  --name perplexity-api-key-dev `
+  --secret-string '{"key":"YOUR_PERPLEXITY_API_KEY"}' `
+  --region us-east-1
+```
+
+The optimize-and-buy Lambda now reads that secret through `PERPLEXITY_SECRET_NAME` and populates `PERPLEXITY_API_KEY` at runtime. Enable the `ai_decision` block in `configs/strategy.json` to turn the layer on.
+
+Paper-only bounded actions are controlled in config:
+- `apply_in_paper=true`
+- `default_reduce_fraction`
+- `max_reduce_fraction`
+- `max_veto_fraction`
+- `min_remaining_orders`
+
+The job remains fail-safe:
+- AI API timeout/error falls back to normal execution
+- In live mode, AI remains advisory-only unless policy is changed
+
 ---
 
 ## Scheduling (Future Enhancement)
@@ -408,9 +463,10 @@ EquityScreenerSchedule:
 ```
 
 **Suggested Schedule:**
-- **Equity Screener:** Daily at 8:00 AM ET (pre-market)
-- **Prediction Screener:** Daily at 8:30 AM ET (after equity screener)
-- **Optimize & Buy:** Daily at 9:35 AM ET (5 min after market open)
+- **Equity Screener:** Daily at 9:00 AM ET
+- **Prediction Screener:** Daily at 9:30 AM ET
+- **Pre-Buy Liquidation Review:** Fixed 14:35 UTC weekday rule (currently 10:35 AM during US daylight time)
+- **Optimize & Buy:** Fixed 14:45 UTC weekday rule (currently 10:45 AM during US daylight time)
 - **Portfolio Monitor:** Every 15 minutes during market hours (9:30 AM - 4:00 PM ET)
 - **Daily Review:** Daily at 4:15 PM ET (after market close)
 - **Daily Summary:** Daily at 5:00 PM ET (end of day)

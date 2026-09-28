@@ -42,8 +42,10 @@ All configured in `template.yaml`:
 
 | Schedule | Time (ET) | Function | Purpose |
 |----------|-----------|----------|---------|
-| Daily weekdays | 8:00 AM | Prediction + Equity Screeners | Generate candidates |
-| Daily weekdays | 9:45 AM | Optimize & Buy | Place orders |
+| Daily weekdays | 9:00 AM | Equity Screener | Generate growth candidates |
+| Daily weekdays | 9:30 AM | Prediction Screener | Generate model-ranked candidates |
+| Daily weekdays | 10:35 AM during daylight time | Daily Review (pre-buy run) | Liquidation review before entries |
+| Daily weekdays | 10:45 AM during daylight time | Optimize & Buy | Place orders (with sell cooldown override and sell-settlement gate) |
 | Hourly weekdays | 9:30 AM - 4:30 PM | Portfolio Monitor | Check positions |
 | Daily weekdays | 4:15 PM | Daily Review | Exit logic |
 | Daily weekdays | 5:00 PM | Daily Summary | Email report |
@@ -196,17 +198,25 @@ aws/
 
 ### Automated Daily Workflow (Weekdays)
 
-**8:00 AM ET** - Morning Analysis
-- Prediction screener runs (ML models generate predictions)
-- Equity screener runs (filter candidates by growth metrics)
-- Results saved to S3
-- Status notification sent via email
+**9:00 AM ET** - Equity Screener
+- Growth screener runs and stores candidate universe in S3
 
-**9:45 AM ET** - Trading Execution
+**9:30 AM ET** - Prediction Screener
+- ML prediction pipeline ranks candidates and stores latest predictions in S3
+
+**10:35 AM ET during daylight time** - Pre-Buy Liquidation Review
+- Daily review function runs before entries to process exit logic
+- This creates a deterministic sell-before-buy window
+
+**10:45 AM ET during daylight time** - Trading Execution
 - Optimize & Buy reads latest predictions
 - Calculates optimal portfolio allocation
+- Applies optional sell-cooldown override for this scheduled entry run
+- Waits for open sell orders to settle before placing new buy orders
 - Submits market orders to Alpaca
 - Alert notification sent via email/SMS
+
+Note: the current EventBridge rules use fixed UTC cron expressions, so Eastern local times shift with daylight-saving season.
 
 **9:30 AM - 4:30 PM ET** - Hourly Monitoring
 - Portfolio monitor checks all positions

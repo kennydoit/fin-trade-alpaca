@@ -46,3 +46,43 @@ def test_pick_top_n_skips_existing_positions(tmp_path):
     picks = optimize_and_buy.pick_top_n_from_screener(csv_path, 3, existing_symbols={"PDFS"})
 
     assert [symbol for symbol, _ in picks] == ["DQ", "SAIL", "COHU"]
+
+
+def test_pick_top_n_applies_correlation_dedup_and_expands_candidate_window(tmp_path, monkeypatch):
+    csv_path = tmp_path / "predictions.csv"
+    write_csv(
+        csv_path,
+        [
+            {"symbol": "AAA", "regularMarketPrice": 10.0, "pred_ret": 0.95},
+            {"symbol": "BBB", "regularMarketPrice": 11.0, "pred_ret": 0.94},
+            {"symbol": "CCC", "regularMarketPrice": 12.0, "pred_ret": 0.93},
+            {"symbol": "DDD", "regularMarketPrice": 13.0, "pred_ret": 0.92},
+            {"symbol": "EEE", "regularMarketPrice": 14.0, "pred_ret": 0.91},
+        ],
+    )
+
+    calls = []
+
+    def fake_dedup_ranked_symbols(symbols, **kwargs):
+        calls.append(list(symbols))
+        dropped = {}
+        for symbol in symbols:
+            if symbol == "BBB":
+                dropped[symbol] = "AAA"
+            elif symbol == "DDD":
+                dropped[symbol] = "CCC"
+            else:
+                dropped[symbol] = None
+        kept = [symbol for symbol in symbols if dropped[symbol] is None]
+        return kept, dropped
+
+    monkeypatch.setattr(optimize_and_buy, "dedup_ranked_symbols", fake_dedup_ranked_symbols)
+
+    picks = optimize_and_buy.pick_top_n_from_screener(
+        csv_path,
+        3,
+        correlation_dedup={"enabled": True, "threshold": 0.75, "search_multiplier": 1},
+    )
+
+    assert [symbol for symbol, _ in picks] == ["AAA", "CCC", "EEE"]
+    assert calls == [["AAA", "BBB", "CCC"], ["AAA", "BBB", "CCC", "DDD", "EEE"]]

@@ -5,18 +5,80 @@ Runs ML predictions and saves results to S3.
 import json
 import os
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
 import boto3
+import pandas as pd
 from botocore.exceptions import ClientError
 
 # Add source code to path
 sys.path.insert(0, '/opt/python')  # Lambda layer
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from runners.predict_screener import main as run_predict_screener, resolve_runtime_config
-import argparse
+from runners.predict_screener import main as run_predict_screener
+
+
+def _pick_first_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for col in candidates:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _format_value(value: object) -> str:
+    if pd.isna(value):
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def _build_prediction_email_report(df: pd.DataFrame, max_assets: int = 5) -> str:
+    if df.empty:
+        return "No predictions found."
+
+    symbol_col = _pick_first_column(df, ["symbol", "ticker", "asset"])
+    if symbol_col is None:
+        symbol_col = df.columns[0]
+
+    top_df = df.head(max_assets).copy()
+    symbols = [str(v) for v in top_df[symbol_col].tolist()]
+
+    lines = [
+        f"Top {len(symbols)} Predictions: {', '.join(symbols)}",
+        "",
+    ]
+
+    field_candidates: list[tuple[str, list[str]]] = [
+        ("prediction_rank", ["prediction_rank", "screener_rank"]),
+        ("sector", ["sector"]),
+        ("industry", ["industry"]),
+        ("pred_ret", ["pred_ret", "predicted_return"]),
+        ("avg_ret", ["avg_ret"]),
+        ("pct_1w", ["pct_1w"]),
+        ("pct_1m", ["pct_1m"]),
+        ("rel_volume", ["rel_volume"]),
+        ("revenueGrowth", ["revenueGrowth"]),
+        ("earningsQuarterlyGrowth", ["earningsQuarterlyGrowth"]),
+        ("model_type", ["model_type"]),
+        ("model_r2_score", ["model_r2_score"]),
+        ("model_spearman_ic", ["model_spearman_ic"]),
+        ("model_mae", ["model_mae"]),
+    ]
+
+    for idx, (_, row) in enumerate(top_df.iterrows(), start=1):
+        symbol = _format_value(row[symbol_col])
+        lines.append(f"asset {idx}: {symbol}")
+        for label, candidates in field_candidates:
+            col = _pick_first_column(top_df, candidates)
+            if col is None:
+                continue
+            lines.append(f"{label}: {_format_value(row[col])}")
+        lines.append("")
+        lines.append("=====================")
+        lines.append("")
+
+    return "\n".join(lines).strip()
 
 
 def lambda_handler(event, context):
@@ -147,9 +209,9 @@ def lambda_handler(event, context):
             print(f"Uploaded database to s3://{bucket_name}/{db_s3_key}")
         
         # Count predictions
-        import pandas as pd
         df = pd.read_csv(latest_csv)
         prediction_count = len(df)
+        formatted_report = _build_prediction_email_report(df, max_assets=5)
         
         # Send status notification
         message = f"""Prediction Screener Completed Successfully
@@ -160,7 +222,7 @@ Predictions Generated: {prediction_count}
 S3 Location: s3://{bucket_name}/{s3_output_key}
 
 Top 5 Predictions:
-{df.head(5).to_string() if prediction_count > 0 else 'No predictions'}
+{formatted_report}
 """
         
         sns_client.publish(

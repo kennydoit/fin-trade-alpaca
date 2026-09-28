@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import boto3
+import pandas as pd
 from botocore.exceptions import ClientError
 
 # Add source code to path
@@ -15,6 +16,151 @@ sys.path.insert(0, '/opt/python')  # Lambda layer
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 from runners.yfinance_growth_screener import main as run_growth_screener
+
+
+def _pick_first_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for col in candidates:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _format_value(value: object) -> str:
+    if pd.isna(value):
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def _pick_sort_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    for col in candidates:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _value_counts_lines(df: pd.DataFrame, column: str, label: str) -> list[str]:
+    if column not in df.columns:
+        return [f"{label}: unavailable (missing '{column}' column)"]
+
+    normalized = df[column].fillna("Unknown").astype(str).str.strip()
+    normalized = normalized.mask(normalized == "", "Unknown")
+    counts = normalized.value_counts(dropna=False)
+
+    lines = [f"{label}:"]
+    for key, count in counts.items():
+        lines.append(f"- {key}: {int(count)}")
+    return lines
+
+
+def _top_assets_by_column_lines(
+    df: pd.DataFrame,
+    symbol_col: str,
+    label: str,
+    sort_candidates: list[str],
+    limit: int = 10,
+    ascending: bool = False,
+) -> list[str]:
+    sort_col = _pick_sort_column(df, sort_candidates)
+    if sort_col is None:
+        return [f"{label}: unavailable (no supported columns found)"]
+
+    ranked = df[[symbol_col, sort_col]].copy()
+    ranked[sort_col] = pd.to_numeric(ranked[sort_col], errors="coerce")
+    ranked = ranked.dropna(subset=[sort_col]).sort_values(sort_col, ascending=ascending).head(limit)
+
+    if ranked.empty:
+        return [f"{label}: unavailable (no numeric values in '{sort_col}')"]
+
+    lines = [f"{label} (by {sort_col}):"]
+    for idx, (_, row) in enumerate(ranked.iterrows(), start=1):
+        lines.append(f"- {idx}. {row[symbol_col]}: {_format_value(row[sort_col])}")
+    return lines
+
+
+def _build_equity_email_report(df: pd.DataFrame, config: dict[str, object] | None = None) -> str:
+    if df.empty:
+        return "No candidates found."
+
+    config = config or {}
+
+    symbol_col = _pick_first_column(df, ["symbol", "ticker", "asset"])
+    if symbol_col is None:
+        symbol_col = df.columns[0]
+
+    configured_sectors = config.get("sectors") if isinstance(config.get("sectors"), list) else []
+    configured_industry_choices = (
+        config.get("industry_choices") if isinstance(config.get("industry_choices"), list) else []
+    )
+    configured_industry_filter = config.get("industry")
+
+    observed_sectors_series = pd.Series(dtype="object")
+    if "sector" in df.columns:
+        observed_sectors_series = df["sector"].fillna("Unknown").astype(str).str.strip()
+        observed_sectors_series = observed_sectors_series.mask(observed_sectors_series == "", "Unknown")
+
+    observed_sectors = sorted(set(observed_sectors_series.tolist())) if not observed_sectors_series.empty else []
+    configured_sector_set = {str(item).strip() for item in configured_sectors if str(item).strip()}
+    observed_sector_set = {str(item).strip() for item in observed_sectors if str(item).strip() and item != "Unknown"}
+
+    missing_configured_sectors = sorted(configured_sector_set - observed_sector_set)
+
+    lines = [
+        "Universe Summary:",
+        f"- number of assets pulled: {len(df)}",
+        f"- number sectors pulled: {len(observed_sector_set) if observed_sector_set else len(observed_sectors)}",
+        "",
+        "Configured Universe Verification:",
+        f"- configured sectors count: {len(configured_sectors)}",
+        f"- configured sectors: {', '.join(configured_sectors) if configured_sectors else 'n/a'}",
+        f"- configured industry choices count: {len(configured_industry_choices)}",
+        (
+            f"- configured industry filter: {configured_industry_filter}"
+            if configured_industry_filter not in (None, "")
+            else "- configured industry filter: all configured industry choices"
+        ),
+        f"- observed sectors in pulled assets: {', '.join(observed_sectors) if observed_sectors else 'n/a'}",
+        (
+            f"- configured sectors missing from this run: {', '.join(missing_configured_sectors)}"
+            if missing_configured_sectors
+            else "- configured sectors missing from this run: none"
+        ),
+        "",
+    ]
+
+    lines.extend(_value_counts_lines(df, "sector", "number of assets for each sector"))
+    lines.append("")
+    lines.extend(_value_counts_lines(df, "industry", "number of assets for each industry"))
+    lines.append("")
+
+    lines.extend(
+        _top_assets_by_column_lines(
+            df,
+            symbol_col,
+            "top 10 assets by volume",
+            ["regularMarketVolume", "averageDailyVolume3Month", "averageDailyVolume", "avgVolume", "volume", "rel_volume"],
+            limit=10,
+            ascending=False,
+        )
+    )
+    lines.append("")
+    lines.extend(
+        _top_assets_by_column_lines(
+            df,
+            symbol_col,
+            "top 10 assets by score",
+            ["score_norm", "score_raw", "pct_1m", "pct_1w", "revenueGrowth"],
+            limit=10,
+            ascending=False,
+        )
+    )
+    lines.append("")
+
+    top_symbol_preview = [str(v) for v in df.head(10)[symbol_col].tolist()]
+    lines.append(f"top 10 ranked symbols from screener output: {', '.join(top_symbol_preview)}")
+
+    return "\n".join(lines).strip()
 
 
 def lambda_handler(event, context):
@@ -52,6 +198,9 @@ def lambda_handler(event, context):
                 raise ValueError(f"Config file not found: s3://{bucket_name}/{config_s3_key}")
             else:
                 raise
+
+        with open(config_local_path, 'r', encoding='utf-8') as config_file:
+            screener_config = json.load(config_file)
         
         # Create temp directory for outputs
         output_dir = '/tmp/screener_results'
@@ -88,9 +237,9 @@ def lambda_handler(event, context):
         print(f"Uploaded results to s3://{bucket_name}/{s3_output_key}")
         
         # Count candidates
-        import pandas as pd
         df = pd.read_csv(latest_csv)
         candidate_count = len(df)
+        formatted_report = _build_equity_email_report(df, config=screener_config)
         
         # Send status notification
         message = f"""Equity Screener Completed Successfully
@@ -100,8 +249,8 @@ Timestamp: {timestamp}
 Candidates Found: {candidate_count}
 S3 Location: s3://{bucket_name}/{s3_output_key}
 
-Top 5 Candidates:
-{df.head(5).to_string() if candidate_count > 0 else 'No candidates'}
+Detailed Report:
+{formatted_report}
 """
         
         sns_client.publish(

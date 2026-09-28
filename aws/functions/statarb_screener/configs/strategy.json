@@ -1,0 +1,61 @@
+{
+  "mode": "paper",
+  "dry_run": false,
+  "total_investment": 1000,
+  "max_assets": 15,
+  "trading_frequency": "daily",
+  "buckets": {
+    "core": {
+      "weight": 0,
+      "assets": {
+        "AIQ": 0.705,
+        "SCHB": 0.295
+      }
+    },
+    "growth": {
+      "weight": 0,
+      "assets": {
+        "DTCR": 1.0
+      }
+    },
+    "short_term": {
+      "weight": 1.0,
+      "screener": "/tmp/predictions.csv",
+      "number_of_assets": 10,
+      "asset_weights": "equal",
+      "stop_loss": -2.5,
+      "take_profit": 6.0,
+      "correlation_dedup": {
+        "enabled": true,
+        "threshold": 0.75,
+        "period": "3mo",
+        "interval": "1d",
+        "batch_size": 50,
+        "search_multiplier": 5
+      },
+      "model_quality_gate": {
+        "enabled": true,
+        "min_spearman_ic": 0.05,
+        "min_r2": -0.20,
+        "max_mae": 0.35,
+        "require_metrics": true
+      },
+      "recent_trade_cooldown": {
+        "enabled": true,
+        "buy_cooldown_days": 7,
+        "sell_cooldown_days": 30,
+        "lookback_days": 45
+      }
+    }
+  },
+  "dynamic_tilt": {
+    "enabled": false,
+    "basis": "pct_1w",
+    "alpha": 0.40,
+    "clip": [-50, 200],
+    "cap_per_asset": 0.25,
+    "frequency": "weekly",
+    "min_avg_volume": 100000,
+    "min_market_cap": 300000000
+  }
+}

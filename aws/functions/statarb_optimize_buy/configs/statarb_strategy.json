@@ -1,0 +1,21 @@
+{
+  "mode": "paper",
+  "dry_run": true,
+  "statarb": {
+    "enabled": true,
+    "allow_shorting": true,
+    "exclude_existing_positions": true,
+    "max_pairs": 2,
+    "total_pair_notional": 1000,
+    "min_score": 0.0,
+    "pairs_csv": "/tmp/statarb_pairs.csv",
+    "liquidation": {
+      "enabled": true,
+      "evaluate_only": false,
+      "auto_execute": false,
+      "max_holding_days": 5,
+      "exit_abs_zscore": 0.5,
+      "orders_lookback_days": 90
+    }
+  }
+}

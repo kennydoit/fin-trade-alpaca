@@ -1,0 +1,28 @@
+{
+  "sector": null,
+  "industry": null,
+  "limit": 60,
+  "return_days": 5,
+  "lookback": 60,
+  "download_batch_size": 25,
+  "download_batch_pause": 2.0,
+  "download_max_retries": 2,
+  "download_retry_pause": 5.0,
+  "out": "/tmp/screener_results/predictions.csv",
+  "versioned": false,
+  "include_short_term_positions": true,
+  "model": {
+    "type": "lightgbm",
+    "n_estimators": 200,
+    "learning_rate": 0.05,
+    "random_state": 42,
+    "tune": false,
+    "tune_n_iter": 6,
+    "tune_cv": 3
+  },
+  "target": {
+    "horizon_days": 5,
+    "label_column": "fwd_ret",
+    "train_split_days": 30
+  }
+}

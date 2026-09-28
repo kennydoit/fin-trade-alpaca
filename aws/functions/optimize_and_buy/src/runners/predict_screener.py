@@ -7,6 +7,7 @@ the installed package so console-scripts can import it reliably.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import sys
@@ -17,11 +18,6 @@ from typing import Any
 import pandas as pd
 from alpaca.trading.client import TradingClient
 
-# DEBUG: Show what we're importing from
-print(f"[RUNNER] Python executable: {sys.executable}")
-print(f"[RUNNER] sys.path[0:3]: {sys.path[:3]}")
-print(f"[RUNNER] __file__: {Path(__file__).resolve()}")
-
 # Ensure the repo root is accessible for imports
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
@@ -29,7 +25,6 @@ SRC_ROOT = REPO_ROOT / "src"
 # Prioritize src/ directory over installed package
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
-    print(f"[RUNNER] Inserted {SRC_ROOT} into sys.path")
 
 from fin_trade_alpaca.env_loader import load_environment_for_mode
 from yfinance.screener.predict_short_term import (
@@ -48,6 +43,10 @@ DEFAULT_PREDICTION_CONFIG: dict[str, Any] = {
     "out": None,
     "versioned": False,
     "include_short_term_positions": True,
+    "download_batch_size": 25,
+    "download_batch_pause": 2.0,
+    "download_max_retries": 2,
+    "download_retry_pause": 5.0,
     "model": {
         "type": "lightgbm",
         "n_estimators": 200,
@@ -58,6 +57,13 @@ DEFAULT_PREDICTION_CONFIG: dict[str, Any] = {
         "tune_cv": 3,
     },
     "target": {"horizon_days": 5, "label_column": "fwd_ret"},
+}
+
+_YFINANCE_ENV_KEYS = {
+    "download_batch_size": "YFINANCE_DOWNLOAD_BATCH_SIZE",
+    "download_batch_pause": "YFINANCE_DOWNLOAD_BATCH_PAUSE",
+    "download_max_retries": "YFINANCE_DOWNLOAD_MAX_RETRIES",
+    "download_retry_pause": "YFINANCE_DOWNLOAD_RETRY_PAUSE",
 }
 
 
@@ -164,7 +170,35 @@ def resolve_runtime_config(args: argparse.Namespace) -> dict[str, Any]:
     merged["lookback"] = int(merged.get("lookback", DEFAULT_PREDICTION_CONFIG["lookback"]))
     merged["out"] = merged.get("out")
     merged["versioned"] = bool(merged.get("versioned", False))
+    merged["download_batch_size"] = int(
+        merged.get("download_batch_size", DEFAULT_PREDICTION_CONFIG["download_batch_size"])
+    )
+    merged["download_batch_pause"] = float(
+        merged.get("download_batch_pause", DEFAULT_PREDICTION_CONFIG["download_batch_pause"])
+    )
+    merged["download_max_retries"] = int(
+        merged.get("download_max_retries", DEFAULT_PREDICTION_CONFIG["download_max_retries"])
+    )
+    merged["download_retry_pause"] = float(
+        merged.get("download_retry_pause", DEFAULT_PREDICTION_CONFIG["download_retry_pause"])
+    )
     return merged
+
+
+@contextmanager
+def configured_yfinance_downloads(runtime: dict[str, Any]):
+    previous: dict[str, str | None] = {}
+    try:
+        for config_key, env_key in _YFINANCE_ENV_KEYS.items():
+            previous[env_key] = os.environ.get(env_key)
+            os.environ[env_key] = str(runtime[config_key])
+        yield
+    finally:
+        for env_key, old_value in previous.items():
+            if old_value is None:
+                os.environ.pop(env_key, None)
+            else:
+                os.environ[env_key] = old_value
 
 
 def filter_candidates(df: pd.DataFrame, sector: str | None, industry: str | None) -> pd.DataFrame:
@@ -269,19 +303,20 @@ def main():
     df = pd.DataFrame()
     lookback_attempts = [runtime["lookback"], 180, 90, 60]
 
-    for attempt, lookback in enumerate(lookback_attempts):
-        if attempt > 0:
-            print(f"\nRetrying with shorter lookback: {lookback} days...")
-
-        df = build_dataset(cand_df, symbols, lookback, runtime["return_days"])
-
-        if not df.empty:
+    with configured_yfinance_downloads(runtime):
+        for attempt, lookback in enumerate(lookback_attempts):
             if attempt > 0:
-                print(f"[OK] Successfully built dataset with {lookback}-day lookback")
-            break
+                print(f"\nRetrying with shorter lookback: {lookback} days...")
 
-        if attempt < len(lookback_attempts) - 1:
-            print(f"[RETRY] Failed with {lookback}-day lookback, trying shorter period...")
+            df = build_dataset(cand_df, symbols, lookback, runtime["return_days"])
+
+            if not df.empty:
+                if attempt > 0:
+                    print(f"[OK] Successfully built dataset with {lookback}-day lookback")
+                break
+
+            if attempt < len(lookback_attempts) - 1:
+                print(f"[RETRY] Failed with {lookback}-day lookback, trying shorter period...")
 
     if df.empty:
         print("\n" + "=" * 60)
@@ -320,9 +355,10 @@ def main():
         feature_importance.to_csv(fi_path, index=False)
         print(f"Wrote feature importances to {fi_path}")
 
-    score_latest_local(
-        model, feat_cols, cand_df, symbols, runtime["return_days"], out_path, scaler=scaler, metrics=metrics
-    )
+    with configured_yfinance_downloads(runtime):
+        score_latest_local(
+            model, feat_cols, cand_df, symbols, runtime["return_days"], out_path, scaler=scaler, metrics=metrics
+        )
 
     if runtime["versioned"]:
         ver = datetime.utcnow().strftime("%Y%m%dT%H%M%S")

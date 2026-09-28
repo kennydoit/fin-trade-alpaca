@@ -31,7 +31,11 @@
   "optimize_and_buy": {
     "paper_scheduled": {
       "run_type": "scheduled",
-      "mode": "paper"
+      "mode": "paper",
+      "sell_cooldown_days_override": 0,
+      "wait_for_sell_orders": true,
+      "sell_order_wait_timeout_seconds": 600,
+      "sell_order_poll_interval_seconds": 10
     },
     "paper_adhoc": {
       "run_type": "adhoc",
@@ -89,6 +93,14 @@
     }
   },
   "daily_review": {
+    "paper_pre_buy_liquidation": {
+      "mode": "paper",
+      "aggressiveness": "moderate",
+      "min_hold_days": 0,
+      "avoid_same_day_exit": false,
+      "dry_run": false,
+      "run_context": "pre_buy"
+    },
     "paper_conservative": {
       "mode": "paper",
       "aggressiveness": "conservative",

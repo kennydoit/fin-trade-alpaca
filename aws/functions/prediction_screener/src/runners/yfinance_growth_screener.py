@@ -17,6 +17,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,41 @@ from yfinance.screener.dedup_by_correlation import dedup_csv
 from yfinance.screener.rank_candidates import rank_rows
 
 
-def get_candidates(limit: int = 200, sectors: list[str] | str | None = None, **kwargs) -> list[dict[str, Any]]:
+def _batched(symbols: list[str], batch_size: int) -> list[list[str]]:
+    iterator = iter(symbols)
+    batches: list[list[str]] = []
+    while True:
+        batch = list(islice(iterator, batch_size))
+        if not batch:
+            break
+        batches.append(batch)
+    return batches
+
+
+def _extract_symbol(row: Any) -> str:
+    if not isinstance(row, dict):
+        return ""
+    return str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+
+
+def _coerce_positive_int(value: Any | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def get_candidates(
+    limit: int = 200,
+    sectors: list[str] | str | None = None,
+    use_sector_quotas: bool = False,
+    per_sector_quota: int | None = None,
+    per_sector_fetch_limit: int | None = None,
+    **kwargs,
+) -> list[dict[str, Any]]:
     """Return candidate symbols by reusing the existing screener, including multi-sector support."""
     from yfinance.screener.yfinance_equity_screener import screen_equities
 
@@ -47,23 +82,86 @@ def get_candidates(limit: int = 200, sectors: list[str] | str | None = None, **k
     if not normalized_sectors:
         return screen_equities(limit=limit, **kwargs)
 
-    results: list[dict[str, Any]] = []
-    seen_symbols = set()
-    for sector in normalized_sectors:
-        if len(results) >= limit:
-            break
+    if not use_sector_quotas:
+        results: list[dict[str, Any]] = []
+        seen_symbols = set()
+        for sector in normalized_sectors:
+            if len(results) >= limit:
+                break
 
-        batch = screen_equities(limit=max(1, limit - len(results)), sector=sector, **call_kwargs)
-        for row in batch:
-            sym = (row.get("symbol") or row.get("ticker") or "") if isinstance(row, dict) else ""
+            batch = screen_equities(limit=max(1, limit - len(results)), sector=sector, **call_kwargs)
+            for row in batch:
+                sym = _extract_symbol(row)
+                if not sym or sym in seen_symbols:
+                    continue
+                seen_symbols.add(sym)
+                results.append(row)
+                if len(results) >= limit:
+                    break
+
+        return results
+
+    quota = _coerce_positive_int(per_sector_quota)
+    if quota is None:
+        quota = max(1, math.ceil(limit / max(1, len(normalized_sectors))))
+
+    fetch_limit = _coerce_positive_int(per_sector_fetch_limit)
+    if fetch_limit is None:
+        fetch_limit = min(limit, max(quota, quota * 3))
+
+    candidates_by_sector: dict[str, list[dict[str, Any]]] = {}
+    for sector in normalized_sectors:
+        raw_batch = screen_equities(limit=fetch_limit, sector=sector, **call_kwargs)
+        cleaned: list[dict[str, Any]] = []
+        seen_in_sector: set[str] = set()
+        for row in raw_batch:
+            sym = _extract_symbol(row)
+            if not sym or sym in seen_in_sector or not isinstance(row, dict):
+                continue
+            seen_in_sector.add(sym)
+            cleaned.append(row)
+        candidates_by_sector[sector] = cleaned
+
+    sector_positions: dict[str, int] = {sector: 0 for sector in normalized_sectors}
+    sector_counts: dict[str, int] = {sector: 0 for sector in normalized_sectors}
+    seen_symbols: set[str] = set()
+    results: list[dict[str, Any]] = []
+
+    # First pass: enforce per-sector quota.
+    for sector in normalized_sectors:
+        while len(results) < limit and sector_positions[sector] < len(candidates_by_sector[sector]):
+            if sector_counts[sector] >= quota:
+                break
+
+            row = candidates_by_sector[sector][sector_positions[sector]]
+            sector_positions[sector] += 1
+            sym = _extract_symbol(row)
             if not sym or sym in seen_symbols:
                 continue
             seen_symbols.add(sym)
             results.append(row)
+            sector_counts[sector] += 1
+
+    # Second pass: spillover fill to reach requested limit.
+    while len(results) < limit:
+        added_any = False
+        for sector in normalized_sectors:
+            while sector_positions[sector] < len(candidates_by_sector[sector]):
+                row = candidates_by_sector[sector][sector_positions[sector]]
+                sector_positions[sector] += 1
+                sym = _extract_symbol(row)
+                if not sym or sym in seen_symbols:
+                    continue
+                seen_symbols.add(sym)
+                results.append(row)
+                added_any = True
+                break
             if len(results) >= limit:
                 break
+        if not added_any:
+            break
 
-    return results
+    return results[:limit]
 
 
 def safe_float(x: Any) -> float | None:
@@ -274,17 +372,23 @@ def compute_metrics_for_symbol(symbol: str) -> dict[str, Any]:
 
 def compute_metrics(symbols: list[str], workers: int = 6, pause: float = 0.0) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futures = {ex.submit(compute_metrics_for_symbol, s): s for s in symbols}
-        for fut in as_completed(futures):
-            sym = futures[fut]
-            try:
-                metrics = fut.result()
-            except Exception:
-                metrics = {"symbol": sym}
-            results.append(metrics)
-            if pause:
-                time.sleep(pause)
+    max_workers = max(1, int(workers))
+    batches = _batched(symbols, max_workers)
+
+    for batch_index, batch in enumerate(batches):
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(batch))) as ex:
+            futures = {ex.submit(compute_metrics_for_symbol, symbol): symbol for symbol in batch}
+            for fut in as_completed(futures):
+                sym = futures[fut]
+                try:
+                    metrics = fut.result()
+                except Exception:
+                    metrics = {"symbol": sym}
+                results.append(metrics)
+
+        if pause and batch_index < len(batches) - 1:
+            time.sleep(pause)
+
     return results
 
 
@@ -454,6 +558,13 @@ def main():
     out_path = Path(args.out) if args.out else Path(config.get("out", default_reports))
     workers = int(config.get("workers", 6))
     pause = args.pause if args.pause is not None else float(config.get("pause", 0.0))
+    use_sector_quotas = bool(config.get("use_sector_quotas", False))
+    per_sector_quota = _coerce_positive_int(config.get("per_sector_quota"))
+    per_sector_fetch_limit = _coerce_positive_int(config.get("per_sector_fetch_limit"))
+    download_batch_size = int(config.get("download_batch_size", 25))
+    download_batch_pause = float(config.get("download_batch_pause", 2.0))
+    download_max_retries = int(config.get("download_max_retries", 2))
+    download_retry_pause = float(config.get("download_retry_pause", 5.0))
 
     print(f"Loaded config from {args.config}")
     if sectors:
@@ -461,6 +572,9 @@ def main():
     if industry:
         print(f"Industry: {industry}")
     print(f"Max symbols to process: {effective_limit}")
+    if use_sector_quotas and sectors:
+        quota_msg = per_sector_quota if per_sector_quota is not None else "auto"
+        print(f"Sector quotas enabled: per_sector_quota={quota_msg}")
 
     candidates = []
     if args.candidates_file:
@@ -486,6 +600,9 @@ def main():
         candidates = get_candidates(
             limit=effective_limit,
             sectors=sectors,
+            use_sector_quotas=use_sector_quotas,
+            per_sector_quota=per_sector_quota,
+            per_sector_fetch_limit=per_sector_fetch_limit,
             sector=sectors[0] if len(sectors) == 1 else None,
             min_eod_price=min_eod_price,
             max_eod_price=max_eod_price,
@@ -567,6 +684,10 @@ def main():
             method=dedup_method,
             window=config.get("correlation_dedup_window"),
             transform=str(config.get("correlation_dedup_transform", "NONE")).upper(),
+            batch_size=download_batch_size,
+            batch_pause=download_batch_pause,
+            max_retries=download_max_retries,
+            retry_pause=download_retry_pause,
         )
         print("Correlation deduplication step completed.")
 

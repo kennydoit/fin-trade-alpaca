@@ -70,10 +70,13 @@ cd C:\Users\Kenrm\repositories\fin-trade-alpaca\aws
 **Schedule (already configured in template.yaml):**
 - 9:00 AM - Equity screener
 - 9:30 AM - Prediction screener  
-- 9:45 AM - Optimize & buy
+- 10:35 AM during daylight time - Pre-buy liquidation review (daily review in pre-buy mode)
+- 10:45 AM during daylight time - Optimize & buy
 - Hourly - Portfolio monitoring
 - 4:15 PM - Daily review (exits)
 - 5:00 PM - Daily summary email
+
+These EventBridge schedules are fixed in UTC, so Eastern local times move by one hour when daylight-saving time is in effect.
 
 ---
 

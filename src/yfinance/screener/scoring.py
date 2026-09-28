@@ -90,12 +90,26 @@ def score_latest(  # noqa: PLR0915, PLR0917 - sequential scoring pipeline; each 
 
     df = df[df["date"] == latest_date].copy()
 
-    # Prepare features with same scaler used in training (NO fitting here).
-    use_std = scaler is not None
-    X, _, _ = prepare_features(df, scaler=scaler, fit_scaler=False, use_standardization=use_std)
+    # Prepare features with same scaler used in training (NO fitting here),
+    # while enforcing the exact trained feature order and failing loudly if a
+    # required column is missing.
+    required_cols = list(feat_cols)
+    missing = [col for col in required_cols if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required inference features for scoring: {missing}")
+
+    X = df.reindex(columns=required_cols).copy()
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    if scaler is not None:
+        X = pd.DataFrame(scaler.transform(X), columns=required_cols, index=X.index)
+
     preds = model.predict(X)
+    df = df.copy()
+    df["live_rank_score"] = preds
     df["pred_ret"] = preds
-    df = df.sort_values("pred_ret", ascending=False)
+    df["raw_fwd_ret"] = np.nan
+    df["rank_target"] = np.nan
+    df = df.sort_values("live_rank_score", ascending=False)
 
     df["prediction_rank"] = range(1, len(df) + 1)
     df["strategy_source"] = "predictive_model"
