@@ -24,11 +24,16 @@ from __future__ import annotations
 import argparse
 from datetime import datetime
 from pathlib import Path
-from itertools import islice
 
 import pandas as pd
 
-import yfinance as yf
+from .data_loading import (
+    DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
+    DEFAULT_DOWNLOAD_MAX_RETRIES,
+    DEFAULT_DOWNLOAD_RETRY_PAUSE,
+    download_price_history_batched,
+)
 
 
 def safe_symbols_from_csv(path: Path) -> list[str]:
@@ -41,54 +46,32 @@ def safe_symbols_from_csv(path: Path) -> list[str]:
     return df
 
 
-def _batched(symbols: list[str], batch_size: int) -> list[list[str]]:
-    iterator = iter(symbols)
-    batches: list[list[str]] = []
-    while True:
-        batch = list(islice(iterator, batch_size))
-        if not batch:
-            break
-        batches.append(batch)
-    return batches
-
-
-def _download_price_batch(symbols: list[str], period: str = "3mo", interval: str = "1d") -> pd.DataFrame:
-    data = yf.download(symbols, period=period, interval=interval, progress=False, threads=True)
-    if isinstance(data, tuple):
-        data = data[0]
-    if "Adj Close" in data:
-        adj = data["Adj Close"]
-    else:
-        adj = data["Close"]
-    if isinstance(adj, pd.Series):
-        adj = adj.to_frame()
-    return adj
-
-
 def download_prices(
     symbols: list[str],
     period: str = "3mo",
     interval: str = "1d",
-    batch_size: int | None = 50,
+    batch_size: int | None = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
 ) -> pd.DataFrame:
     unique_symbols = [symbol for symbol in dict.fromkeys(symbols) if symbol]
     if not unique_symbols:
         return pd.DataFrame()
 
-    if batch_size is None or batch_size <= 0 or len(unique_symbols) <= batch_size:
-        return _download_price_batch(unique_symbols, period=period, interval=interval)
+    effective_batch_size = len(unique_symbols) if batch_size is None or batch_size <= 0 else int(batch_size)
+    combined = download_price_history_batched(
+        unique_symbols,
+        period=period,
+        interval=interval,
+        batch_size=effective_batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+    )
+    if combined.empty:
+        return combined
 
-    frames: list[pd.DataFrame] = []
-    for batch in _batched(unique_symbols, batch_size):
-        batch_frame = _download_price_batch(batch, period=period, interval=interval)
-        if not batch_frame.empty:
-            frames.append(batch_frame)
-
-    if not frames:
-        return pd.DataFrame()
-
-    combined = pd.concat(frames, axis=1)
-    combined = combined.loc[:, ~combined.columns.duplicated()]
     ordered_columns = [symbol for symbol in unique_symbols if symbol in combined.columns]
     return combined.reindex(columns=ordered_columns)
 
@@ -170,16 +153,27 @@ def dedup_ranked_symbols(
     method: str = "CORRELATION",
     window: int | None = None,
     transform: str = "NONE",
-    batch_size: int | None = 50,
+    batch_size: int | None = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
 ) -> tuple[list[str], dict[str, str | None]]:
     ordered_symbols = [str(symbol).strip() for symbol in symbols if str(symbol).strip()]
     ordered_symbols = list(dict.fromkeys(ordered_symbols))
     if not ordered_symbols:
         return [], {}
 
-    adj = download_prices(ordered_symbols, period=period, interval=interval, batch_size=batch_size)
+    adj = download_prices(
+        ordered_symbols,
+        period=period,
+        interval=interval,
+        batch_size=batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+    )
     if adj.empty:
-        return ordered_symbols, {symbol: None for symbol in ordered_symbols}
+        return ordered_symbols, dict.fromkeys(ordered_symbols)
 
     if window is not None:
         adj = adj.tail(window)
@@ -204,6 +198,10 @@ def dedup_csv(
     method: str = "CORRELATION",
     window: int | None = None,
     transform: str = "NONE",
+    batch_size: int | None = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
 ) -> tuple[Path, Path, Path]:
     assert inp.exists(), f"Input not found: {inp}"
 
@@ -219,7 +217,15 @@ def dedup_csv(
     symbols = [str(x).strip() for x in df["symbol"].tolist()]
 
     print(f"Downloading price history for {len(symbols)} symbols (period={period})...")
-    adj = download_prices(symbols, period=period, interval=interval)
+    adj = download_prices(
+        symbols,
+        period=period,
+        interval=interval,
+        batch_size=batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+    )
     if adj.empty:
         raise SystemExit("Failed to download price data or no data returned")
 

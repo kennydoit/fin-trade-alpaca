@@ -5,7 +5,7 @@ import csv
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 
@@ -196,7 +196,9 @@ def load_pair_candidates(csv_path: Path) -> list[PairCandidate]:
     return candidates
 
 
-def filter_existing_positions(client: TradingClient, candidates: list[PairCandidate], enabled: bool) -> list[PairCandidate]:
+def filter_existing_positions(
+    client: TradingClient, candidates: list[PairCandidate], enabled: bool
+) -> list[PairCandidate]:
     if not enabled:
         return candidates
 
@@ -238,8 +240,10 @@ def _build_pair_lookup(candidates: list[PairCandidate]) -> dict[frozenset[str], 
     return lookup
 
 
-def _build_latest_entry_times_by_symbol_side(client: TradingClient, lookback_days: int) -> dict[tuple[str, str], datetime]:
-    now_utc = datetime.now(timezone.utc)
+def _build_latest_entry_times_by_symbol_side(
+    client: TradingClient, lookback_days: int
+) -> dict[tuple[str, str], datetime]:
+    now_utc = datetime.now(UTC)
     try:
         orders = client.get_orders(
             GetOrdersRequest(
@@ -267,7 +271,7 @@ def _build_latest_entry_times_by_symbol_side(client: TradingClient, lookback_day
         if ts is None:
             continue
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
 
         key = (symbol, side_text)
         prev = latest_by_key.get(key)
@@ -344,7 +348,7 @@ def evaluate_liquidation_decisions(
     if not open_pairs:
         return []
 
-    now = now_utc or datetime.now(timezone.utc)
+    now = now_utc or datetime.now(UTC)
     candidate_by_id = {candidate.pair_id: candidate for candidate in candidates}
 
     max_holding_days = liquidation_cfg.get("max_holding_days")
@@ -427,7 +431,9 @@ def submit_pair_liquidation(client: TradingClient, decision: LiquidationDecision
     return submitted
 
 
-def select_pair_candidates(candidates: list[PairCandidate], max_pairs: int, min_score: float = float("-inf")) -> list[PairCandidate]:
+def select_pair_candidates(
+    candidates: list[PairCandidate], max_pairs: int, min_score: float = float("-inf")
+) -> list[PairCandidate]:
     selected: list[PairCandidate] = []
     used_symbols: set[str] = set()
 
@@ -568,7 +574,9 @@ def run_statarb_optimize_buy() -> int:
         to_liquidate = [decision for decision in decisions if decision.should_liquidate]
 
         if decisions:
-            print(f"Evaluated {len(decisions)} open statarb pairs for liquidation; {len(to_liquidate)} marked for exit.")
+            print(
+                f"Evaluated {len(decisions)} open statarb pairs for liquidation; {len(to_liquidate)} marked for exit."
+            )
             for decision in to_liquidate:
                 submit_pair_liquidation(client, decision, dry_run=True)
         else:
@@ -582,7 +590,9 @@ def run_statarb_optimize_buy() -> int:
             print("Liquidation evaluate_only=true; skipping new statarb entries.")
             return 0
 
-    candidates = filter_existing_positions(client, candidates, bool(statarb_cfg.get("exclude_existing_positions", True)))
+    candidates = filter_existing_positions(
+        client, candidates, bool(statarb_cfg.get("exclude_existing_positions", True))
+    )
 
     max_pairs = int(args.max_pairs or statarb_cfg.get("max_pairs", 2))
     min_score = safe_float(statarb_cfg.get("min_score")) or float("-inf")

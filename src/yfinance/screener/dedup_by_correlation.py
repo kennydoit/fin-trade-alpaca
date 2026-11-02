@@ -27,9 +27,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from .data_loading import DEFAULT_DOWNLOAD_BATCH_PAUSE, DEFAULT_DOWNLOAD_BATCH_SIZE
-from .data_loading import DEFAULT_DOWNLOAD_MAX_RETRIES, DEFAULT_DOWNLOAD_RETRY_PAUSE
-from .data_loading import download_price_history_batched
+from .data_loading import (
+    DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
+    DEFAULT_DOWNLOAD_MAX_RETRIES,
+    DEFAULT_DOWNLOAD_RETRY_PAUSE,
+    download_price_history_batched,
+)
 
 
 def safe_symbols_from_csv(path: Path) -> list[str]:
@@ -169,7 +173,7 @@ def dedup_ranked_symbols(
         retry_pause=retry_pause,
     )
     if adj.empty:
-        return ordered_symbols, {symbol: None for symbol in ordered_symbols}
+        return ordered_symbols, dict.fromkeys(ordered_symbols)
 
     if window is not None:
         adj = adj.tail(window)

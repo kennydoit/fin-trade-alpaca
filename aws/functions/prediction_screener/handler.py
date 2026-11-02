@@ -125,8 +125,8 @@ def lambda_handler(event, context):
                 raise
         
         # Download config file from S3
-        config_s3_key = 'configs/prediction_screener.json'
-        config_local_path = '/tmp/prediction_screener.json'
+        config_s3_key = 'configs/prediction_breakout.json'
+        config_local_path = '/tmp/prediction_breakout.json'
         try:
             s3_client.download_file(bucket_name, config_s3_key, config_local_path)
             print(f"Downloaded config from s3://{bucket_name}/{config_s3_key}")
@@ -177,13 +177,15 @@ def lambda_handler(event, context):
         # Run prediction screener using the candidates
         print(f"Running prediction screener with {limit} symbols...")
         output_file = os.path.join(output_dir, 'predictions.csv')
+        strategy_config = Path(__file__).parent / 'configs' / 'strategy.json'
         sys.argv = [
             'predict_screener',
             '--candidates-file', candidates_local_path,
             '--limit', str(limit),
             '--return-days', str(return_days),
             '--lookback', str(lookback),
-            '--out', output_file
+            '--out', output_file,
+            '--strategy-config', str(strategy_config),
         ]
         
         if config_local_path:

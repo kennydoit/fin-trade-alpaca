@@ -1,8 +1,8 @@
-from decimal import Decimal
-from datetime import datetime, timedelta, timezone
 import importlib.util
 import sys
 import types
+from datetime import UTC, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from runners import statarb_optimize_buy
@@ -21,7 +21,9 @@ def test_select_pair_candidates_limits_overlap_and_count():
 
 
 def test_build_pair_plan_uses_hedge_ratio_for_default_weights():
-    candidate = statarb_optimize_buy.PairCandidate("pair-1", "AAA", "BBB", 2.0, None, 2.0, None, None, None, None, None, None)
+    candidate = statarb_optimize_buy.PairCandidate(
+        "pair-1", "AAA", "BBB", 2.0, None, 2.0, None, None, None, None, None, None
+    )
 
     plan = statarb_optimize_buy.build_pair_plan([candidate], Decimal("1000.00"))
 
@@ -99,7 +101,7 @@ def test_handler_summary_counts_pair_legs_without_buy_sell_lines():
 
 
 def test_evaluate_liquidation_decisions_marks_max_holding_exit():
-    now = datetime(2026, 9, 14, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 14, tzinfo=UTC)
     open_pair = statarb_optimize_buy.OpenStatarbPair(
         pair_id="AAA_BBB",
         long_symbol="AAA",

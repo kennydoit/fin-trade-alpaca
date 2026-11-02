@@ -2,25 +2,27 @@ from __future__ import annotations
 
 import argparse
 import calendar
-import csv
 import json
 import os
 import sys
 import time
+import csv
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
+from typing import Dict
 from zoneinfo import ZoneInfo
 
 from alpaca.common.exceptions import APIError
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestQuoteRequest
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
-from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest
-
+from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest
 from fin_trade_alpaca.env_loader import load_environment_for_mode
+from yfinance.screener.dedup_by_correlation import dedup_ranked_symbols
 
 EASTERN_TZ = ZoneInfo("America/New_York")
 
@@ -47,7 +49,9 @@ def require_ci_approval_for_real_orders(mode: str, dry_run: bool) -> None:
         )
 
     if mode == "live" and os.getenv("ALLOW_LIVE_TRADING", "").lower() != "true":
-        raise PermissionError("Refusing live order placement in CI. Set ALLOW_LIVE_TRADING=true in approved secrets.")
+        raise PermissionError(
+            "Refusing live order placement in CI. Set ALLOW_LIVE_TRADING=true in approved secrets."
+        )
 
 
 # Environment loading is delegated to `fin_trade_alpaca.env_loader.load_environment_for_mode`
@@ -56,7 +60,8 @@ def require_ci_approval_for_real_orders(mode: str, dry_run: bool) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Allocate available Alpaca cash into configured strategy buckets using fractional notional buy orders."
+            "Allocate available Alpaca cash into configured strategy buckets "
+            "using fractional notional buy orders."
         )
     )
     parser.add_argument(
@@ -203,7 +208,9 @@ def load_strategy_config(config_path: Path) -> dict:
             asset_weight_total += w
 
         if assets and asset_weight_total > Decimal("1.0000001"):
-            raise ValueError(f"Bucket '{bucket_name}' asset weights sum to {asset_weight_total}, which exceeds 1.0.")
+            raise ValueError(
+                f"Bucket '{bucket_name}' asset weights sum to {asset_weight_total}, which exceeds 1.0."
+            )
 
     if abs(total_bucket_weight - Decimal("1")) > Decimal("0.0001"):
         raise ValueError(f"Bucket weights must sum to 1.0, found {total_bucket_weight}.")
@@ -216,14 +223,14 @@ def get_market_open_days(client: TradingClient, start: date, end: date) -> set[d
     return {entry.date for entry in cal}
 
 
-def compute_effective_trade_days(client: TradingClient, year: int, month: int) -> dict[str, date]:
+def compute_effective_trade_days(client: TradingClient, year: int, month: int) -> Dict[str, date]:
     month_last_day = calendar.monthrange(year, month)[1]
     anchors = {
         "mid_month": date(year, month, 15),
         "month_end": date(year, month, month_last_day),
     }
 
-    effective_days: dict[str, date] = {}
+    effective_days: Dict[str, date] = {}
     for name, anchor in anchors.items():
         search_end = anchor + timedelta(days=7)
         market_days = sorted(get_market_open_days(client, anchor, search_end))
@@ -235,65 +242,18 @@ def compute_effective_trade_days(client: TradingClient, year: int, month: int) -
     return effective_days
 
 
-def should_run_today(client: TradingClient, today: date, trading_frequency: str = "monthly") -> tuple[bool, str]:
-    """
-    Determine if trading should occur today based on trading frequency.
-    
-    Args:
-        client: Alpaca trading client
-        today: Today's date
-        trading_frequency: One of 'daily', 'weekly', 'monthly'
-            - 'daily': Trade every market day
-            - 'weekly': Trade every Monday (or next market day)
-            - 'monthly': Trade on 15th and last day of month
-    
-    Returns:
-        (should_run, reason_message)
-    """
-    trading_frequency = trading_frequency.lower()
-    
-    if trading_frequency == "daily":
-        # Trade every market day
-        calendar = client.get_calendar(GetCalendarRequest(start=today, end=today))
-        if calendar and len(calendar) > 0:
-            return True, f"Date gate passed (daily trading, market open on {today.isoformat()})."
-        else:
-            return False, f"Date gate skipped (market closed on {today.isoformat()})."
-    
-    elif trading_frequency == "weekly":
-        # Trade every Monday (weekday 0), or next market day if Monday is holiday
-        # Check if today is Monday or the first market day of the week
-        week_start = today - timedelta(days=today.weekday())  # Get Monday of current week
-        week_end = week_start + timedelta(days=6)  # Get Sunday
-        
-        # Get all market days in this week
-        market_days = sorted(get_market_open_days(client, week_start, week_end))
-        if not market_days:
-            return False, f"Date gate skipped (no market days this week starting {week_start.isoformat()})."
-        
-        # Trade on the first market day of the week
-        first_market_day = market_days[0]
-        if today == first_market_day:
-            return True, f"Date gate passed (weekly trading, first market day of week: {first_market_day.isoformat()})."
-        else:
-            return False, f"Date gate skipped (weekly trading, waiting for first market day: {first_market_day.isoformat()})."
-    
-    elif trading_frequency == "monthly":
-        # Original logic: Trade on 15th and last day of month
-        effective_days = compute_effective_trade_days(client, today.year, today.month)
-        if today in set(effective_days.values()):
-            reason = ", ".join(f"{k}={v.isoformat()}" for k, v in effective_days.items())
-            return True, f"Date gate passed ({reason})."
-        
+def should_run_today(client: TradingClient, today: date) -> tuple[bool, str]:
+    effective_days = compute_effective_trade_days(client, today.year, today.month)
+    if today in set(effective_days.values()):
         reason = ", ".join(f"{k}={v.isoformat()}" for k, v in effective_days.items())
-        return False, f"Date gate skipped. Today={today.isoformat()} with targets {reason}."
-    
-    else:
-        raise ValueError(f"Invalid trading_frequency: {trading_frequency}. Must be 'daily', 'weekly', or 'monthly'.")
+        return True, f"Date gate passed ({reason})."
+
+    reason = ", ".join(f"{k}={v.isoformat()}" for k, v in effective_days.items())
+    return False, f"Date gate skipped. Today={today.isoformat()} with targets {reason}."
 
 
-def flatten_symbol_weights(strategy_config: dict) -> dict[str, Decimal]:
-    symbol_weights: dict[str, Decimal] = {}
+def flatten_symbol_weights(strategy_config: dict) -> Dict[str, Decimal]:
+    symbol_weights: Dict[str, Decimal] = {}
     for bucket in strategy_config["buckets"].values():
         bucket_weight = Decimal(str(bucket["weight"]))
         assets = bucket.get("assets", {})
@@ -319,7 +279,7 @@ def compute_momentum_for_symbols(symbols, basis="pct_1m", clip=(-50, 200)):
         import yfinance as yf
     except Exception:
         print("yfinance not available; skipping dynamic tilt.")
-        return dict.fromkeys(symbols)
+        return {s: None for s in symbols}
 
     metrics = {}
     for sym in symbols:
@@ -361,9 +321,7 @@ def compute_momentum_for_symbols(symbols, basis="pct_1m", clip=(-50, 200)):
     return metrics
 
 
-def apply_dynamic_tilt(
-    strategy_config: dict, symbol_weights: dict[str, Decimal], tilt_cfg: dict, spendable_cash: Decimal
-):
+def apply_dynamic_tilt(strategy_config: dict, symbol_weights: Dict[str, Decimal], tilt_cfg: dict, spendable_cash: Decimal):
     """Apply dynamic tilt across combined core+growth assets and return new symbol_weights and a report list."""
     # collect symbols from core and growth
     buckets = strategy_config.get("buckets", {})
@@ -436,16 +394,14 @@ def apply_dynamic_tilt(
         new_weights[s] = new_w
         orig_invest = (spendable_cash * orig_w).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
         new_invest = (spendable_cash * new_w).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-        report.append(
-            {
-                "symbol": s,
-                "original_weight": float(orig_w),
-                "tilt_weight": float(new_w),
-                "original_investment": f"{orig_invest}",
-                "tilt_investment": f"{new_invest}",
-                "metric": metrics.get(s),
-            }
-        )
+        report.append({
+            "symbol": s,
+            "original_weight": float(orig_w),
+            "tilt_weight": float(new_w),
+            "original_investment": f"{orig_invest}",
+            "tilt_investment": f"{new_invest}",
+            "metric": metrics.get(s),
+        })
 
     return new_weights, report
 
@@ -495,10 +451,10 @@ def write_tilt_report(report_rows, today: date, mode: str):
 
 def distribute_notionals(
     spendable_cash: Decimal,
-    symbol_weights: dict[str, Decimal],
+    symbol_weights: Dict[str, Decimal],
     min_order_notional: Decimal,
-) -> dict[str, Decimal]:
-    notionals: dict[str, Decimal] = {}
+) -> Dict[str, Decimal]:
+    notionals: Dict[str, Decimal] = {}
     for symbol, weight in symbol_weights.items():
         if weight <= 0:
             continue
@@ -521,7 +477,12 @@ def find_latest_screener_csv(repo_root: Path):
     return csvs_sorted[0]
 
 
-def pick_top_n_from_screener(csv_path: Path, n: int, existing_symbols: set[str] | None = None):
+def pick_top_n_from_screener(
+    csv_path: Path,
+    n: int,
+    existing_symbols: set[str] | None = None,
+    correlation_dedup: dict | None = None,
+):
     """Return the top N symbols from a screener CSV.
 
     Prefer the prediction score (`pred_ret`) because it reflects the ranked
@@ -541,7 +502,7 @@ def pick_top_n_from_screener(csv_path: Path, n: int, existing_symbols: set[str] 
                 price = safe_float(r.get("regularMarketPrice") or r.get("close") or r.get("eodprice"))
                 # Prefer the model ranking score first, then historical average return.
                 score = None
-                for fld in ("pred_ret", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
+                for fld in ("pred_ret", "breakout_prob", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
                     val = safe_float(r.get(fld))
                     if val is not None:
                         score = val
@@ -555,26 +516,132 @@ def pick_top_n_from_screener(csv_path: Path, n: int, existing_symbols: set[str] 
         return []
 
     rows_sorted = sorted(rows, key=lambda x: (x[2], x[0]), reverse=True)
-    top = rows_sorted[:n]
-    return [(r[0], r[1]) for r in top]
+
+    dedup_cfg = correlation_dedup or {}
+    if not dedup_cfg.get("enabled", False):
+        top = rows_sorted[:n]
+        return [(r[0], r[1]) for r in top]
+
+    threshold = safe_float(dedup_cfg.get("threshold"))
+    if threshold is None or threshold <= 0:
+        top = rows_sorted[:n]
+        return [(r[0], r[1]) for r in top]
+
+    search_multiplier = max(1, int(dedup_cfg.get("search_multiplier", 5)))
+    candidate_window = min(len(rows_sorted), max(n, n * search_multiplier))
+    period = str(dedup_cfg.get("period", "3mo"))
+    interval = str(dedup_cfg.get("interval", "1d"))
+    method = str(dedup_cfg.get("method", "CORRELATION")).upper()
+    window = dedup_cfg.get("window")
+    transform = str(dedup_cfg.get("transform", "NONE")).upper()
+    batch_size = dedup_cfg.get("batch_size", 50)
+
+    while candidate_window > 0:
+        candidate_rows = rows_sorted[:candidate_window]
+        candidate_symbols = [symbol for symbol, _price, _score in candidate_rows]
+        kept_symbols, _dropped_map = dedup_ranked_symbols(
+            candidate_symbols,
+            threshold=threshold,
+            period=period,
+            interval=interval,
+            method=method,
+            window=window,
+            transform=transform,
+            batch_size=batch_size,
+        )
+        kept_set = set(kept_symbols)
+        deduped_rows = [row for row in candidate_rows if row[0] in kept_set]
+        if len(deduped_rows) >= n or candidate_window >= len(rows_sorted):
+            return [(symbol, price) for symbol, price, _score in deduped_rows[:n]]
+
+        next_window = min(len(rows_sorted), max(candidate_window + n, candidate_window * 2))
+        if next_window == candidate_window:
+            return [(symbol, price) for symbol, price, _score in deduped_rows[:n]]
+        candidate_window = next_window
+
+    return []
 
 
-def submit_short_term_orders(
-    client: TradingClient, orders: list[dict], dry_run: bool, creds: ModeCredentials = None
-) -> list[str]:
+def load_model_quality_metrics(csv_path: Path) -> dict[str, float | None]:
+    """Read model quality metrics from the first screener row, if present."""
+    metrics = {
+        "spearman_ic": None,
+        "r2": None,
+        "mae": None,
+    }
+    try:
+        with csv_path.open("r", encoding="utf-8") as f:
+            first = next(csv.DictReader(f), None)
+    except OSError:
+        return metrics
+
+    if not first:
+        return metrics
+
+    metrics["spearman_ic"] = safe_float(first.get("model_spearman_ic"))
+    metrics["r2"] = safe_float(first.get("model_r2_score"))
+    metrics["mae"] = safe_float(first.get("model_mae"))
+    return metrics
+
+
+def passes_model_quality_gate(csv_path: Path, short_bucket: dict, short_cfg: dict) -> tuple[bool, str]:
+    """Return whether short-term entries should run given model quality thresholds."""
+    gate_cfg = short_bucket.get("model_quality_gate") or short_cfg.get("model_quality_gate") or {}
+    if not gate_cfg or not gate_cfg.get("enabled", False):
+        return True, ""
+
+    min_spearman = safe_float(gate_cfg.get("min_spearman_ic"))
+    min_r2 = safe_float(gate_cfg.get("min_r2"))
+    max_mae = safe_float(gate_cfg.get("max_mae"))
+    require_metrics = bool(gate_cfg.get("require_metrics", True))
+
+    metrics = load_model_quality_metrics(csv_path)
+    missing = []
+    if min_spearman is not None and metrics["spearman_ic"] is None:
+        missing.append("model_spearman_ic")
+    if min_r2 is not None and metrics["r2"] is None:
+        missing.append("model_r2_score")
+    if max_mae is not None and metrics["mae"] is None:
+        missing.append("model_mae")
+
+    if missing and require_metrics:
+        return False, f"Skipping short-term allocation: missing model metrics ({', '.join(missing)})."
+
+    print(
+        "Model quality metrics: "
+        f"spearman_ic={metrics['spearman_ic']}, r2={metrics['r2']}, mae={metrics['mae']}"
+    )
+
+    failures = []
+    if min_spearman is not None and metrics["spearman_ic"] is not None and metrics["spearman_ic"] < min_spearman:
+        failures.append(f"spearman_ic={metrics['spearman_ic']:.4f} < min_spearman_ic={min_spearman:.4f}")
+    if min_r2 is not None and metrics["r2"] is not None and metrics["r2"] < min_r2:
+        failures.append(f"r2={metrics['r2']:.4f} < min_r2={min_r2:.4f}")
+    if max_mae is not None and metrics["mae"] is not None and metrics["mae"] > max_mae:
+        failures.append(f"mae={metrics['mae']:.4f} > max_mae={max_mae:.4f}")
+
+    if failures:
+        return False, f"Skipping short-term allocation: model quality gate failed ({'; '.join(failures)})."
+    return True, ""
+
+
+def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run: bool, creds: ModeCredentials = None) -> list[str]:
     """orders: list of dicts with keys: symbol, notional, price, stop_pct, take_pct"""
     submitted = []
     if not orders:
         return submitted
-
+        
     # Create data client for fetching current prices
     data_client = None
     if creds:
         try:
-            data_client = StockHistoricalDataClient(api_key=creds.api_key, secret_key=creds.api_secret)
+            data_client = StockHistoricalDataClient(
+                api_key=creds.api_key,
+                secret_key=creds.api_secret
+            )
         except Exception as e:
             print(f"  WARNING: Could not create data client: {e}")
-
+    
     print("Short-term order plan:")
     for o in orders:
         print(f"  BUY {o['symbol']}: ${o['notional']} with stop={o['stop_pct']}% take={o['take_pct']}%")
@@ -598,34 +665,30 @@ def submit_short_term_orders(
                     quote = data_client.get_stock_latest_quote(request)
                     if symbol in quote and quote[symbol].ask_price:
                         current_price = float(quote[symbol].ask_price)
-                        print(
-                            f"  {symbol}: using live ask price ${current_price:.2f} (screener: ${screener_price:.2f})"
-                        )
+                        print(f"  {symbol}: using live ask price ${current_price:.2f} (screener: ${screener_price:.2f})")
                     else:
                         print(f"  {symbol}: no live quote, using screener price ${screener_price:.2f}")
                 except Exception as e:
                     print(f"  {symbol}: could not fetch live price ({e}), using screener price ${screener_price:.2f}")
-
+            
             # Bracket orders require quantity, not notional
             if current_price is None or current_price <= 0:
                 print(f"  WARNING {symbol}: price is None or invalid ({current_price}), skipping order")
                 continue
-
+            
             # Calculate quantity from notional and current price
             qty = float(notional) / float(current_price)
             # Round prices to penny increments (no sub-penny pricing allowed)
             take_price = round(float(current_price) * (1.0 + take_pct / 100.0), 2)
             stop_price = round(float(current_price) * (1.0 + stop_pct / 100.0), 2)
-
-            print(
-                f"  {symbol}: qty={qty:.6f}, stop=${stop_price:.2f} ({stop_pct}%), take=${take_price:.2f} ({take_pct}%)"
-            )
+            
+            print(f"  {symbol}: qty={qty:.6f}, stop=${stop_price:.2f} ({stop_pct}%), take=${take_price:.2f} ({take_pct}%)")
 
             # NOTE: Alpaca does NOT support bracket orders with fractional shares
             # We must submit a simple order first, then add stop loss/take profit after fill
             # For now, submit simple fractional order without protections
             # TODO: Add post-fill monitoring to add stop loss and take profit orders
-
+            
             req = MarketOrderRequest(
                 symbol=symbol,
                 qty=qty,
@@ -634,9 +697,9 @@ def submit_short_term_orders(
             )
             order = client.submit_order(req)
             submitted.append(order.id)
-
-            print(f"✓ Submitted {symbol} order id={order.id} qty={qty:.6f}")
-            print("  ⚠️  Note: Stop loss/take profit will need to be added separately after fill")
+            
+            print(f"Γ£ô Submitted {symbol} order id={order.id} qty={qty:.6f}")
+            print(f"  ΓÜá∩╕Å  Note: Stop loss/take profit will need to be added separately after fill")
             print(f"     Target stop=${stop_price:.2f}, take=${take_price:.2f}")
         except APIError as ex:
             print(f"Short-term order failed for {symbol}: {ex}")
@@ -648,7 +711,7 @@ def submit_short_term_orders(
 
 def submit_orders(
     client: TradingClient,
-    notionals: dict[str, Decimal],
+    notionals: Dict[str, Decimal],
     dry_run: bool,
 ) -> list[str]:
     if not notionals:
@@ -681,9 +744,7 @@ def submit_orders(
     return submitted_ids
 
 
-def poll_orders_for_fills(
-    client: TradingClient, order_ids: list[str], timeout_sec: int = 180, poll_interval: int = 5
-) -> dict:
+def poll_orders_for_fills(client: TradingClient, order_ids: list[str], timeout_sec: int = 180, poll_interval: int = 5) -> dict:
     """Poll Alpaca for the given order IDs until all are filled or timeout.
 
     Returns a mapping order_id -> final_status.
@@ -833,10 +894,7 @@ def main() -> int:
         if client is None:
             print("Scheduled run requires Alpaca client; provide credentials or remove --run-type scheduled.")
             return 2
-        
-        # Get trading frequency from config (default to monthly for backward compatibility)
-        trading_frequency = strategy_config.get("trading_frequency", "monthly")
-        run_today, reason = should_run_today(client, today_et, trading_frequency)
+        run_today, reason = should_run_today(client, today_et)
         print(reason)
         if not run_today:
             return 0
@@ -869,65 +927,13 @@ def main() -> int:
         print("No spendable cash available. Exiting.")
         return 0
 
-    # Get current positions for capacity management
-    existing_positions = []
-    existing_symbols = set()
-    if client is not None:
-        try:
-            existing_positions = client.get_all_positions()
-            existing_symbols = {p.symbol.strip().upper() for p in existing_positions}
-            current_position_count = len(existing_positions)
-            current_position_value = sum(float(p.market_value) for p in existing_positions)
-            current_unrealized_pl = sum(float(p.unrealized_pl) for p in existing_positions)
-            print("\n📊 Current Portfolio Status:")
-            print(f"  Positions: {current_position_count}")
-            print(f"  Market Value: ${current_position_value:.2f}")
-            print(f"  Unrealized P/L: ${current_unrealized_pl:.2f}")
-        except Exception as ex:
-            current_position_count = 0
-            print(f"⚠️  Unable to read existing positions: {ex}")
-    else:
-        current_position_count = 0
-
-    # Check max_assets limit from config
-    max_assets = strategy_config.get("max_assets")
-    if max_assets is not None:
-        max_assets = int(max_assets)
-        available_capacity = max_assets - current_position_count
-        print("\n🎯 Portfolio Capacity:")
-        print(f"  Max Assets: {max_assets}")
-        print(f"  Current Assets: {current_position_count}")
-        print(f"  Available Capacity: {available_capacity}")
-
-        if available_capacity <= 0:
-            print(
-                f"\n⚠️  Portfolio is at or above capacity ({current_position_count}/{max_assets}). Cannot add new positions."
-            )
-            print("  To add new positions, either:")
-            print("    1. Close some existing positions first")
-            print("    2. Increase max_assets in strategy config")
-            print("    3. Run portfolio monitor to close positions meeting sell criteria")
-            return 0
-    else:
-        available_capacity = None  # No limit
-        print("\n📝 No max_assets limit configured - unlimited capacity")
-
     # Handle short-term allocation (use screener results)
     short_cfg = strategy_config.get("short_term_settings", {})
     short_bucket = strategy_config.get("buckets", {}).get("short_term", {})
     short_weight = Decimal(str(short_bucket.get("weight", 0)))
     short_order_ids: list[str] = []
     # determine number_of_assets: prefer bucket-level setting, fall back to short_term_settings
-    requested_assets = int(short_bucket.get("number_of_assets") or short_cfg.get("number_of_assets", 0))
-
-    # Adjust requested_assets based on available capacity
-    if available_capacity is not None and requested_assets > available_capacity:
-        print(f"\n⚠️  Requested {requested_assets} new assets, but only {available_capacity} slots available.")
-        print(f"  Adjusting to {available_capacity} assets to stay within max_assets={max_assets} limit.")
-        n_assets = available_capacity
-    else:
-        n_assets = requested_assets
-
+    n_assets = int(short_bucket.get("number_of_assets") or short_cfg.get("number_of_assets", 0))
     if short_weight > 0 and n_assets > 0:
         repo_root = Path(__file__).resolve().parents[2]
         # determine screener CSV path: prefer explicit path in bucket.screener
@@ -947,19 +953,36 @@ def main() -> int:
             csv_path = find_latest_screener_csv(repo_root)
 
         if csv_path is None:
-            print(
-                "Short-term requested but no screener CSV found in reports/screener_results. Skipping short-term allocation."
-            )
+            print("Short-term requested but no screener CSV found in reports/screener_results. Skipping short-term allocation.")
         else:
-            # Use existing_symbols already fetched above
-            n = int(n_assets)
-            picks = pick_top_n_from_screener(csv_path, n, existing_symbols=existing_symbols)
+            gate_ok, gate_reason = passes_model_quality_gate(csv_path, short_bucket, short_cfg)
+            if not gate_ok:
+                print(gate_reason)
+                picks = []
+            else:
+                picks = None
+
+            existing_symbols = set()
+            if client is not None:
+                try:
+                    existing_symbols = {p.symbol.strip().upper() for p in client.get_all_positions()}
+                except Exception as ex:
+                    print(f"Unable to read existing positions for short-term filter: {ex}")
+
+            if picks is None:
+                n = int(n_assets)
+                picks = pick_top_n_from_screener(
+                    csv_path,
+                    n,
+                    existing_symbols=existing_symbols,
+                    correlation_dedup=short_bucket.get("correlation_dedup"),
+                )
             if not picks:
                 print(f"No valid picks found in screener {csv_path}. Skipping short-term allocation.")
             else:
                 short_alloc = (spendable_cash * short_weight).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
                 # decide per-asset allocation based on asset_weights (only 'equal' supported)
-                asset_weights = short_bucket.get("asset_weights") or short_cfg.get("asset_weights") or "equal"
+                asset_weights = (short_bucket.get("asset_weights") or short_cfg.get("asset_weights") or "equal")
                 if asset_weights != "equal":
                     print(f"asset_weights='{asset_weights}' not supported, defaulting to 'equal'.")
                 stop_pct = short_bucket.get("stop_loss", short_cfg.get("stop_loss", -3.0))
@@ -967,24 +990,20 @@ def main() -> int:
                 per_asset = (short_alloc / Decimal(str(len(picks)))).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
                 orders = []
                 for sym, price in picks:
-                    orders.append(
-                        {
-                            "symbol": sym,
-                            "notional": per_asset,
-                            "price": price,
-                            "stop_pct": float(stop_pct),
-                            "take_pct": float(take_pct),
-                        }
-                    )
+                    orders.append({
+                        "symbol": sym,
+                        "notional": per_asset,
+                        "price": price,
+                        "stop_pct": float(stop_pct),
+                        "take_pct": float(take_pct),
+                    })
 
                 if short_alloc <= Decimal("0"):
                     print("Short-term allocation computed as $0. Skipping short-term orders.")
                 else:
                     print(f"Allocating ${short_alloc} to short-term picks ({len(picks)} assets)")
                     if client is None and not args.dry_run:
-                        print(
-                            "No Alpaca client available to submit short-term orders. Use --simulate-cash or provide credentials."
-                        )
+                        print("No Alpaca client available to submit short-term orders. Use --simulate-cash or provide credentials.")
                         return 2
                     short_order_ids = submit_short_term_orders(client, orders, args.dry_run, creds)
                     # reduce spendable cash for the remaining allocations
@@ -1012,9 +1031,7 @@ def main() -> int:
     order_ids = submit_orders(client, notionals, args.dry_run)
 
     if args.poll_fills and order_ids and not args.dry_run:
-        statuses = poll_orders_for_fills(
-            client, order_ids, timeout_sec=args.poll_timeout, poll_interval=args.poll_interval
-        )
+        statuses = poll_orders_for_fills(client, order_ids, timeout_sec=args.poll_timeout, poll_interval=args.poll_interval)
         print("Final order statuses:")
         for oid, st in statuses.items():
             print(f"  {oid}: {st}")

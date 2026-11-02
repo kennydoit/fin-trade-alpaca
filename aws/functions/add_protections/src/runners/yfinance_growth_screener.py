@@ -65,7 +65,9 @@ def get_candidates(
     **kwargs,
 ) -> list[dict[str, Any]]:
     """Return candidate symbols by reusing the existing screener, including multi-sector support."""
-    from yfinance.screener.yfinance_equity_screener import screen_equities
+    import yfinance.screener.yfinance_equity_screener as eq_screener
+
+    screen_equities = eq_screener.screen_equities
 
     if sectors is None:
         sectors = kwargs.pop("sector", None)
@@ -90,7 +92,12 @@ def get_candidates(
                 break
 
             batch = screen_equities(limit=max(1, limit - len(results)), sector=sector, **call_kwargs)
-            for row in batch:
+            for candidate_row in batch:
+                row = dict(candidate_row) if isinstance(candidate_row, dict) else {"symbol": str(candidate_row)}
+                if not row.get("sector"):
+                    row["sector"] = sector
+                if not row.get("industry"):
+                    row["industry"] = "Unknown"
                 sym = _extract_symbol(row)
                 if not sym or sym in seen_symbols:
                     continue
@@ -114,7 +121,12 @@ def get_candidates(
         raw_batch = screen_equities(limit=fetch_limit, sector=sector, **call_kwargs)
         cleaned: list[dict[str, Any]] = []
         seen_in_sector: set[str] = set()
-        for row in raw_batch:
+        for candidate_row in raw_batch:
+            row = dict(candidate_row) if isinstance(candidate_row, dict) else {"symbol": str(candidate_row)}
+            if not row.get("sector"):
+                row["sector"] = sector
+            if not row.get("industry"):
+                row["industry"] = "Unknown"
             sym = _extract_symbol(row)
             if not sym or sym in seen_in_sector or not isinstance(row, dict):
                 continue
@@ -122,8 +134,8 @@ def get_candidates(
             cleaned.append(row)
         candidates_by_sector[sector] = cleaned
 
-    sector_positions: dict[str, int] = {sector: 0 for sector in normalized_sectors}
-    sector_counts: dict[str, int] = {sector: 0 for sector in normalized_sectors}
+    sector_positions: dict[str, int] = dict.fromkeys(normalized_sectors, 0)
+    sector_counts: dict[str, int] = dict.fromkeys(normalized_sectors, 0)
     seen_symbols: set[str] = set()
     results: list[dict[str, Any]] = []
 

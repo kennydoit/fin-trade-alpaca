@@ -9,14 +9,13 @@ reused independently of the rest of the prediction pipeline.
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from itertools import islice
 import time
+from itertools import islice
+from pathlib import Path
 
 import pandas as pd
 
 import yfinance as yf
-
 
 DEFAULT_DOWNLOAD_BATCH_SIZE = 25
 DEFAULT_DOWNLOAD_BATCH_PAUSE = 2.0
@@ -134,7 +133,9 @@ def _download_batch(symbols: list[str], period: str, interval: str, auto_adjust:
     return _extract_adjusted_close(df)
 
 
-def _download_individually(symbols: list[str], period: str, interval: str = "1d", auto_adjust: bool = False) -> pd.DataFrame:
+def _download_individually(
+    symbols: list[str], period: str, interval: str = "1d", auto_adjust: bool = False
+) -> pd.DataFrame:
     """Fallback path: fetch each symbol's history one at a time.
 
     Used when the batched ``yf.download`` call fails outright (e.g. transient
@@ -217,6 +218,93 @@ def download_price_history_batched(
     combined = combined.loc[:, ~combined.columns.duplicated()]
     ordered_columns = [symbol for symbol in normalized_symbols if symbol in combined.columns]
     return combined.reindex(columns=ordered_columns)
+
+
+_OHLCV_FIELDS = {"close": "Close", "high": "High", "low": "Low", "volume": "Volume"}
+
+
+def _split_ohlcv(df: pd.DataFrame, symbols: list[str]) -> dict[str, pd.DataFrame]:
+    """Split a yfinance download into per-field frames; returns ``{}`` if any field is missing."""
+    is_multiindex = hasattr(df.columns, "nlevels") and df.columns.nlevels > 1
+    out: dict[str, pd.DataFrame] = {}
+    for key, name in _OHLCV_FIELDS.items():
+        if is_multiindex:
+            if name not in df.columns.get_level_values(0):
+                return {}
+            frame = df[name].copy()
+        else:
+            if name not in df.columns or len(symbols) != 1:
+                return {}
+            frame = df[[name]].copy()
+            frame.columns = [symbols[0]]
+        frame.columns = [str(c) for c in frame.columns]
+        out[key] = frame
+    return out
+
+
+def _download_ohlcv_individually(symbols: list[str], period: str) -> dict[str, pd.DataFrame]:
+    """Fallback path: fetch each symbol's OHLCV history one at a time."""
+    cols: dict[str, dict[str, pd.Series]] = {key: {} for key in _OHLCV_FIELDS}
+    for s in symbols:
+        try:
+            h = yf.Ticker(s).history(period=period, interval="1d", actions=False, auto_adjust=True)
+        except Exception:
+            continue
+        if h is None or h.empty or any(name not in h.columns for name in _OHLCV_FIELDS.values()):
+            continue
+        for key, name in _OHLCV_FIELDS.items():
+            cols[key][s] = h[name].rename(s)
+    if not cols["close"]:
+        return {}
+    return {key: pd.concat(series.values(), axis=1) for key, series in cols.items()}
+
+
+def download_ohlcv_history(symbols: list[str], lookback_days: int) -> dict[str, pd.DataFrame]:
+    """Download split/dividend-adjusted OHLCV history for ``symbols``.
+
+    Returns:
+        Dict with ``close``, ``high``, ``low`` and ``volume`` DataFrames (columns =
+        symbols, all adjusted consistently), or an empty dict if nothing could be
+        downloaded.
+    """
+    period = _period_for_lookback(lookback_days)
+    normalized = _normalize_symbols(symbols)
+    if not normalized:
+        return {}
+
+    batch_size = max(1, _env_int(ENV_DOWNLOAD_BATCH_SIZE, DEFAULT_DOWNLOAD_BATCH_SIZE))
+    batch_pause = _env_float(ENV_DOWNLOAD_BATCH_PAUSE, DEFAULT_DOWNLOAD_BATCH_PAUSE)
+    batches = _batched(normalized, batch_size)
+    parts: dict[str, list[pd.DataFrame]] = {key: [] for key in _OHLCV_FIELDS}
+
+    for batch_index, batch in enumerate(batches):
+        fields: dict[str, pd.DataFrame] = {}
+        try:
+            raw = yf.download(
+                batch, period=period, interval="1d", progress=False, threads=False, auto_adjust=True
+            )
+            if isinstance(raw, tuple):
+                raw = raw[0]
+            if raw is not None and not raw.empty:
+                fields = _split_ohlcv(raw, batch)
+        except Exception as exc:
+            print(f"WARNING: yfinance OHLCV batch download failed for {len(batch)} symbols: {exc}")
+        if not fields:
+            fields = _download_ohlcv_individually(batch, period)
+        for key, frame in fields.items():
+            parts[key].append(frame)
+        if batch_index < len(batches) - 1:
+            _sleep(batch_pause)
+
+    if not parts["close"]:
+        return {}
+
+    result: dict[str, pd.DataFrame] = {}
+    for key, frames in parts.items():
+        combined = pd.concat(frames, axis=1)
+        combined = combined.loc[:, ~combined.columns.duplicated()]
+        result[key] = combined.reindex(columns=[s for s in normalized if s in combined.columns])
+    return result
 
 
 def download_price_history(symbols: list[str], lookback_days: int) -> pd.DataFrame:

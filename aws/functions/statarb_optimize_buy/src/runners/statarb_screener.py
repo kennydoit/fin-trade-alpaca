@@ -8,6 +8,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from yfinance.screener.data_loading import (
+    DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
+    DEFAULT_DOWNLOAD_MAX_RETRIES,
+    DEFAULT_DOWNLOAD_RETRY_PAUSE,
+    download_price_history_batched,
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate statarb pair candidates from a dedicated universe.")
@@ -68,27 +76,30 @@ def normalize_symbols(raw_symbols: list[str], max_symbols: int) -> list[str]:
     return symbols
 
 
-def download_close_prices(symbols: list[str], lookback_days: int) -> pd.DataFrame:
-    import yfinance as yf
-
+def download_close_prices(
+    symbols: list[str],
+    lookback_days: int,
+    batch_size: int = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
+) -> pd.DataFrame:
     period_days = max(lookback_days + 20, lookback_days)
     period = f"{period_days}d"
-    data = yf.download(symbols, period=period, interval="1d", auto_adjust=True, progress=False, threads=True)
+    data = download_price_history_batched(
+        symbols,
+        period=period,
+        interval="1d",
+        batch_size=batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+        auto_adjust=True,
+    )
     if data is None or data.empty:
         raise ValueError("No pricing data downloaded for statarb screener universe.")
 
-    if isinstance(data.columns, pd.MultiIndex):
-        if "Close" in data.columns.get_level_values(0):
-            closes = data["Close"]
-        else:
-            closes = data.xs("Close", axis=1, level=0, drop_level=True)
-    else:
-        closes = data
-
-    if isinstance(closes, pd.Series):
-        closes = closes.to_frame(name=symbols[0])
-
-    closes = closes.sort_index().dropna(how="all")
+    closes = data.sort_index().dropna(how="all")
     closes = closes.tail(lookback_days)
     return closes
 
@@ -181,13 +192,26 @@ def main() -> int:
 
     lookback_days = int(args.lookback or cfg.get("lookback_days", 90))
     min_history_days = int(cfg.get("min_history_days", 60))
-    min_correlation = float(args.min_correlation if args.min_correlation is not None else cfg.get("min_correlation", 0.7))
+    min_correlation = float(
+        args.min_correlation if args.min_correlation is not None else cfg.get("min_correlation", 0.7)
+    )
     top_pairs = int(args.top_pairs or cfg.get("top_pairs", 20))
     max_symbols = int(cfg.get("max_symbols", 50))
     default_pair_notional = float(cfg.get("default_pair_notional", 1000.0))
+    download_batch_size = int(cfg.get("download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE))
+    download_batch_pause = float(cfg.get("download_batch_pause", DEFAULT_DOWNLOAD_BATCH_PAUSE))
+    download_max_retries = int(cfg.get("download_max_retries", DEFAULT_DOWNLOAD_MAX_RETRIES))
+    download_retry_pause = float(cfg.get("download_retry_pause", DEFAULT_DOWNLOAD_RETRY_PAUSE))
 
     symbols = normalize_symbols(cfg.get("symbols", []), max_symbols=max_symbols)
-    closes = download_close_prices(symbols, lookback_days)
+    closes = download_close_prices(
+        symbols,
+        lookback_days,
+        batch_size=download_batch_size,
+        batch_pause=download_batch_pause,
+        max_retries=download_max_retries,
+        retry_pause=download_retry_pause,
+    )
     candidates = build_pair_candidates(closes, min_history_days=min_history_days, min_correlation=min_correlation)
     selected = candidates[:top_pairs]
 

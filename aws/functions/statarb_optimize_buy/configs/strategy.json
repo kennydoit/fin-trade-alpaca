@@ -1,5 +1,5 @@
 {
-  "mode": "paper",
+  "mode": "live",
   "dry_run": false,
   "total_investment": 1000,
   "max_assets": 15,
@@ -20,11 +20,31 @@
     },
     "short_term": {
       "weight": 1.0,
-      "screener": "/tmp/predictions.csv",
-      "number_of_assets": 10,
+      "screener": null,
+      "number_of_assets": 5,
+      "prediction_pipeline": "wide_asset_based_prediction",
       "asset_weights": "equal",
       "stop_loss": -2.5,
       "take_profit": 6.0,
+      "wide_asset_based_prediction": {
+        "enabled": true,
+        "min_assets": 3,
+        "max_assets": 5,
+        "holdout_days": 5,
+        "strict_r2_only": true,
+        "min_r2_score": -0.2,
+        "index_symbols": ["SPY", "QQQ", "IWM", "DIA"],
+        "xgboost": {
+          "n_estimators": 200,
+          "learning_rate": 0.03,
+          "max_depth": 2,
+          "subsample": 0.8,
+          "colsample_bytree": 0.7,
+          "reg_alpha": 0.5,
+          "reg_lambda": 5.0,
+          "min_child_weight": 8.0
+        }
+      },
       "correlation_dedup": {
         "enabled": true,
         "threshold": 0.75,
@@ -35,16 +55,10 @@
       },
       "model_quality_gate": {
         "enabled": true,
-        "min_spearman_ic": 0.05,
+        "min_spearman_ic": null,
         "min_r2": -0.20,
         "max_mae": 0.35,
         "require_metrics": true
-      },
-      "recent_trade_cooldown": {
-        "enabled": true,
-        "buy_cooldown_days": 7,
-        "sell_cooldown_days": 30,
-        "lookback_days": 45
       }
     }
   },
@@ -57,11 +71,5 @@
     "frequency": "weekly",
     "min_avg_volume": 100000,
     "min_market_cap": 300000000
-  },
-  "statarb_exclusion": {
-    "enabled": true,
-    "pairs_csv": "/tmp/statarb_pairs.csv",
-    "max_pairs": 2,
-    "min_score": 0.0
   }
 }

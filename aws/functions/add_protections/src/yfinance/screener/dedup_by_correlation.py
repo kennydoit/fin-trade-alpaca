@@ -27,7 +27,13 @@ from pathlib import Path
 
 import pandas as pd
 
-import yfinance as yf
+from .data_loading import (
+    DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
+    DEFAULT_DOWNLOAD_MAX_RETRIES,
+    DEFAULT_DOWNLOAD_RETRY_PAUSE,
+    download_price_history_batched,
+)
 
 
 def safe_symbols_from_csv(path: Path) -> list[str]:
@@ -40,17 +46,34 @@ def safe_symbols_from_csv(path: Path) -> list[str]:
     return df
 
 
-def download_prices(symbols: list[str], period: str = "3mo", interval: str = "1d") -> pd.DataFrame:
-    data = yf.download(symbols, period=period, interval=interval, progress=False, threads=True)
-    if isinstance(data, tuple):
-        data = data[0]
-    if "Adj Close" in data:
-        adj = data["Adj Close"]
-    else:
-        adj = data["Close"]
-    if isinstance(adj, pd.Series):
-        adj = adj.to_frame()
-    return adj
+def download_prices(
+    symbols: list[str],
+    period: str = "3mo",
+    interval: str = "1d",
+    batch_size: int | None = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
+) -> pd.DataFrame:
+    unique_symbols = [symbol for symbol in dict.fromkeys(symbols) if symbol]
+    if not unique_symbols:
+        return pd.DataFrame()
+
+    effective_batch_size = len(unique_symbols) if batch_size is None or batch_size <= 0 else int(batch_size)
+    combined = download_price_history_batched(
+        unique_symbols,
+        period=period,
+        interval=interval,
+        batch_size=effective_batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+    )
+    if combined.empty:
+        return combined
+
+    ordered_columns = [symbol for symbol in unique_symbols if symbol in combined.columns]
+    return combined.reindex(columns=ordered_columns)
 
 
 def compute_returns(adj: pd.DataFrame, transform: str = "NONE") -> pd.DataFrame:
@@ -122,6 +145,51 @@ def cluster_dedup(symbols: list[str], corr: pd.DataFrame, threshold: float) -> d
     return dropped_due_to
 
 
+def dedup_ranked_symbols(
+    symbols: list[str],
+    threshold: float = 0.85,
+    period: str = "3mo",
+    interval: str = "1d",
+    method: str = "CORRELATION",
+    window: int | None = None,
+    transform: str = "NONE",
+    batch_size: int | None = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
+) -> tuple[list[str], dict[str, str | None]]:
+    ordered_symbols = [str(symbol).strip() for symbol in symbols if str(symbol).strip()]
+    ordered_symbols = list(dict.fromkeys(ordered_symbols))
+    if not ordered_symbols:
+        return [], {}
+
+    adj = download_prices(
+        ordered_symbols,
+        period=period,
+        interval=interval,
+        batch_size=batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+    )
+    if adj.empty:
+        return ordered_symbols, dict.fromkeys(ordered_symbols)
+
+    if window is not None:
+        adj = adj.tail(window)
+
+    returns = compute_returns(adj, transform=("LOG" if transform == "LOG" else "NONE"))
+    corr = returns.corr()
+
+    if method == "CORRELATION":
+        dropped_map = greedy_dedup(ordered_symbols, corr, threshold)
+    else:
+        dropped_map = cluster_dedup(ordered_symbols, corr, threshold)
+
+    kept_symbols = [symbol for symbol in ordered_symbols if dropped_map.get(symbol) is None]
+    return kept_symbols, dropped_map
+
+
 def dedup_csv(
     inp: Path,
     threshold: float = 0.85,
@@ -130,6 +198,10 @@ def dedup_csv(
     method: str = "CORRELATION",
     window: int | None = None,
     transform: str = "NONE",
+    batch_size: int | None = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    batch_pause: float = DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    max_retries: int = DEFAULT_DOWNLOAD_MAX_RETRIES,
+    retry_pause: float = DEFAULT_DOWNLOAD_RETRY_PAUSE,
 ) -> tuple[Path, Path, Path]:
     assert inp.exists(), f"Input not found: {inp}"
 
@@ -145,23 +217,32 @@ def dedup_csv(
     symbols = [str(x).strip() for x in df["symbol"].tolist()]
 
     print(f"Downloading price history for {len(symbols)} symbols (period={period})...")
-    adj = download_prices(symbols, period=period, interval=interval)
+    adj = download_prices(
+        symbols,
+        period=period,
+        interval=interval,
+        batch_size=batch_size,
+        batch_pause=batch_pause,
+        max_retries=max_retries,
+        retry_pause=retry_pause,
+    )
     if adj.empty:
         raise SystemExit("Failed to download price data or no data returned")
 
-    if window is not None:
-        adj = adj.tail(window)
-
-    returns = compute_returns(adj, transform=("LOG" if transform == "LOG" else "NONE"))
-    corr = returns.corr()
-
     print(f"Dedup method={method}, threshold={threshold}, transform={transform}, window={window}")
+    kept_symbols, dropped_map = dedup_ranked_symbols(
+        symbols,
+        threshold=threshold,
+        period=period,
+        interval=interval,
+        method=method,
+        window=window,
+        transform=transform,
+    )
     if method == "CORRELATION":
         print("Computing greedy deduplication (correlation)...")
-        dropped_map = greedy_dedup(symbols, corr, threshold)
     else:
         print("Computing cluster-based deduplication...")
-        dropped_map = cluster_dedup(symbols, corr, threshold)
 
     # append UTC date suffix _YYYYMMDD to output filenames unless input already contains date
     date = datetime.utcnow().strftime("%Y%m%d")
@@ -182,7 +263,7 @@ def dedup_csv(
     print(f"Wrote flags to {out_flags}")
 
     df_out[df_out["kept"]].to_csv(out_dedup, index=False)
-    print(f"Wrote deduped list to {out_dedup} (kept {df_out['kept'].sum()} / {len(df_out)})")
+    print(f"Wrote deduped list to {out_dedup} (kept {len(kept_symbols)} / {len(df_out)})")
     df_out[~df_out["kept"]].to_csv(out_dropped, index=False)
     print(f"Wrote dropped list to {out_dropped} (dropped {(~df_out['kept']).sum()} )")
     return out_flags, out_dedup, out_dropped

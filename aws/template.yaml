@@ -184,7 +184,7 @@ Resources:
         TargetArn: !Ref AlertTopic
       Environment:
         Variables:
-          PREDICTION_CONFIG_PATH: configs/prediction_screener.json
+          PREDICTION_CONFIG_PATH: configs/prediction_breakout.json
 
   EquityScreenerFunction:
     Type: AWS::Serverless::Function

@@ -8,9 +8,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from yfinance.screener.data_loading import DEFAULT_DOWNLOAD_BATCH_PAUSE, DEFAULT_DOWNLOAD_BATCH_SIZE
-from yfinance.screener.data_loading import DEFAULT_DOWNLOAD_MAX_RETRIES, DEFAULT_DOWNLOAD_RETRY_PAUSE
-from yfinance.screener.data_loading import download_price_history_batched
+from yfinance.screener.data_loading import (
+    DEFAULT_DOWNLOAD_BATCH_PAUSE,
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
+    DEFAULT_DOWNLOAD_MAX_RETRIES,
+    DEFAULT_DOWNLOAD_RETRY_PAUSE,
+    download_price_history_batched,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -188,7 +192,9 @@ def main() -> int:
 
     lookback_days = int(args.lookback or cfg.get("lookback_days", 90))
     min_history_days = int(cfg.get("min_history_days", 60))
-    min_correlation = float(args.min_correlation if args.min_correlation is not None else cfg.get("min_correlation", 0.7))
+    min_correlation = float(
+        args.min_correlation if args.min_correlation is not None else cfg.get("min_correlation", 0.7)
+    )
     top_pairs = int(args.top_pairs or cfg.get("top_pairs", 20))
     max_symbols = int(cfg.get("max_symbols", 50))
     default_pair_notional = float(cfg.get("default_pair_notional", 1000.0))

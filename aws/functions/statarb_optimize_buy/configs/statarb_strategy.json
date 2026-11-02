@@ -12,9 +12,9 @@
     "liquidation": {
       "enabled": true,
       "evaluate_only": false,
-      "auto_execute": false,
-      "max_holding_days": 5,
-      "exit_abs_zscore": 0.5,
+      "auto_execute": true,
+      "max_holding_days": 4,
+      "exit_abs_zscore": 0.35,
       "orders_lookback_days": 90
     }
   }

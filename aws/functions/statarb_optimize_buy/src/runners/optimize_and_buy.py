@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import calendar
@@ -9,7 +9,7 @@ import time
 import csv
 import math
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 from typing import Dict
@@ -17,8 +17,8 @@ from zoneinfo import ZoneInfo
 
 from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
-from alpaca.trading.requests import GetCalendarRequest, GetOrdersRequest, MarketOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import GetCalendarRequest, MarketOrderRequest, TakeProfitRequest, StopLossRequest
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestQuoteRequest
 from fin_trade_alpaca.env_loader import load_environment_for_mode
@@ -242,40 +242,14 @@ def compute_effective_trade_days(client: TradingClient, year: int, month: int) -
     return effective_days
 
 
-def should_run_today(  # noqa: PLR0911 - branchy by design; one return per outcome keeps logging explicit
-    client: TradingClient, today: date, trading_frequency: str = "monthly"
-) -> tuple[bool, str]:
-    trading_frequency = trading_frequency.lower()
-
-    if trading_frequency == "daily":
-        market_open_today = get_market_open_days(client, today, today)
-        if market_open_today:
-            return True, f"Date gate passed (daily trading, market open on {today.isoformat()})."
-        return False, f"Date gate skipped (market closed on {today.isoformat()})."
-
-    if trading_frequency == "weekly":
-        week_start = today - timedelta(days=today.weekday())
-        week_end = week_start + timedelta(days=6)
-
-        market_days = sorted(get_market_open_days(client, week_start, week_end))
-        if not market_days:
-            return False, f"Date gate skipped (no market days this week starting {week_start.isoformat()})."
-
-        first_market_day = market_days[0]
-        if today == first_market_day:
-            return True, f"Date gate passed (weekly trading, first market day of week: {first_market_day.isoformat()})."
-        return False, (
-            f"Date gate skipped (weekly trading, waiting for first market day: {first_market_day.isoformat()})."
-        )
-
-    if trading_frequency == "monthly":
-        effective_days = compute_effective_trade_days(client, today.year, today.month)
+def should_run_today(client: TradingClient, today: date) -> tuple[bool, str]:
+    effective_days = compute_effective_trade_days(client, today.year, today.month)
+    if today in set(effective_days.values()):
         reason = ", ".join(f"{k}={v.isoformat()}" for k, v in effective_days.items())
-        if today in set(effective_days.values()):
-            return True, f"Date gate passed ({reason})."
-        return False, f"Date gate skipped. Today={today.isoformat()} with targets {reason}."
+        return True, f"Date gate passed ({reason})."
 
-    raise ValueError(f"Invalid trading_frequency: {trading_frequency}. Must be 'daily', 'weekly', or 'monthly'.")
+    reason = ", ".join(f"{k}={v.isoformat()}" for k, v in effective_days.items())
+    return False, f"Date gate skipped. Today={today.isoformat()} with targets {reason}."
 
 
 def flatten_symbol_weights(strategy_config: dict) -> Dict[str, Decimal]:
@@ -503,92 +477,6 @@ def find_latest_screener_csv(repo_root: Path):
     return csvs_sorted[0]
 
 
-def find_latest_statarb_pairs_csv(repo_root: Path) -> Path | None:
-    dirpath = repo_root.joinpath("reports", "statarb_results")
-    if not dirpath.exists():
-        return None
-
-    preferred = sorted(dirpath.glob("pairs_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if preferred:
-        return preferred[0]
-
-    fallback = dirpath.joinpath("pairs.csv")
-    if fallback.exists():
-        return fallback
-    return None
-
-
-def load_statarb_excluded_symbols(strategy_config: dict, repo_root: Path) -> set[str]:
-    exclusion_cfg = strategy_config.get("statarb_exclusion") or {}
-    if not exclusion_cfg.get("enabled", False):
-        return set()
-
-    pairs_path = exclusion_cfg.get("pairs_csv")
-    csv_path: Path | None = None
-    if pairs_path:
-        p = Path(str(pairs_path))
-        csv_path = p if p.is_absolute() else repo_root.joinpath(p)
-        if not csv_path.exists():
-            print(f"Configured statarb exclusion file {csv_path} not found. Attempting latest statarb pairs file.")
-            csv_path = None
-
-    if csv_path is None:
-        csv_path = find_latest_statarb_pairs_csv(repo_root)
-
-    if csv_path is None:
-        print("Statarb exclusion enabled but no pairs CSV was found. Continuing without statarb exclusions.")
-        return set()
-
-    rows: list[tuple[str, str, float]] = []
-    try:
-        with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                long_symbol = str(row.get("long_symbol") or "").strip().upper()
-                short_symbol = str(row.get("short_symbol") or "").strip().upper()
-                if not long_symbol or not short_symbol:
-                    continue
-                score = safe_float(row.get("score"))
-                if score is None:
-                    score = float("-inf")
-                rows.append((long_symbol, short_symbol, score))
-    except OSError as ex:
-        print(f"Unable to read statarb exclusion CSV {csv_path}: {ex}")
-        return set()
-
-    if not rows:
-        return set()
-
-    min_score = safe_float(exclusion_cfg.get("min_score"))
-    if min_score is not None:
-        rows = [row for row in rows if row[2] >= min_score]
-    if not rows:
-        return set()
-
-    max_pairs = exclusion_cfg.get("max_pairs")
-    if max_pairs is not None:
-        try:
-            max_pairs_int = max(0, int(max_pairs))
-        except (TypeError, ValueError):
-            max_pairs_int = len(rows)
-    else:
-        max_pairs_int = len(rows)
-
-    sorted_rows = sorted(rows, key=lambda item: item[2], reverse=True)
-    selected_rows = sorted_rows[:max_pairs_int]
-    excluded_symbols = {symbol for long_symbol, short_symbol, _ in selected_rows for symbol in (long_symbol, short_symbol)}
-
-    if excluded_symbols:
-        preview = ", ".join(sorted(excluded_symbols)[:10])
-        suffix = " ..." if len(excluded_symbols) > 10 else ""
-        print(
-            f"Statarb exclusion enabled: blocked {len(excluded_symbols)} symbols from optimize/buy using {csv_path}: "
-            f"{preview}{suffix}"
-        )
-
-    return excluded_symbols
-
-
 def pick_top_n_from_screener(
     csv_path: Path,
     n: int,
@@ -614,7 +502,7 @@ def pick_top_n_from_screener(
                 price = safe_float(r.get("regularMarketPrice") or r.get("close") or r.get("eodprice"))
                 # Prefer the model ranking score first, then historical average return.
                 score = None
-                for fld in ("pred_ret", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
+                for fld in ("pred_ret", "breakout_prob", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
                     val = safe_float(r.get(fld))
                     if val is not None:
                         score = val
@@ -735,82 +623,6 @@ def passes_model_quality_gate(csv_path: Path, short_bucket: dict, short_cfg: dic
     if failures:
         return False, f"Skipping short-term allocation: model quality gate failed ({'; '.join(failures)})."
     return True, ""
-
-
-def get_recent_trade_cooldown_symbols(client: TradingClient, cooldown_cfg: dict | None) -> dict[str, str]:
-    """Return symbol->reason for entries blocked by recent buy/sell cooldown windows."""
-    if not cooldown_cfg or not cooldown_cfg.get("enabled", False):
-        return {}
-
-    try:
-        buy_days = max(0, int(cooldown_cfg.get("buy_cooldown_days", 0) or 0))
-        sell_days = max(0, int(cooldown_cfg.get("sell_cooldown_days", 30) or 0))
-    except (TypeError, ValueError):
-        print("Invalid recent_trade_cooldown config; skipping cooldown filter.")
-        return {}
-
-    max_cooldown_days = max(buy_days, sell_days)
-    if max_cooldown_days <= 0:
-        return {}
-
-    try:
-        lookback_days = int(cooldown_cfg.get("lookback_days", max_cooldown_days) or max_cooldown_days)
-    except (TypeError, ValueError):
-        lookback_days = max_cooldown_days
-    lookback_days = max(lookback_days, max_cooldown_days)
-
-    now_utc = datetime.now(timezone.utc)
-    try:
-        recent_orders = client.get_orders(
-            GetOrdersRequest(
-                status=QueryOrderStatus.ALL,
-                after=now_utc - timedelta(days=lookback_days + 1),
-                direction="desc",
-                limit=500,
-            )
-        )
-    except Exception as ex:
-        print(f"Unable to load recent orders for cooldown filter: {ex}")
-        return {}
-
-    blocked: dict[str, tuple[int, str]] = {}
-    for order in recent_orders:
-        symbol = (getattr(order, "symbol", "") or "").strip().upper()
-        if not symbol:
-            continue
-
-        side = str(getattr(getattr(order, "side", ""), "value", getattr(order, "side", ""))).lower()
-        if side == "sell":
-            cooldown_days = sell_days
-        elif side == "buy":
-            cooldown_days = buy_days
-        else:
-            continue
-
-        if cooldown_days <= 0:
-            continue
-
-        trade_ts = getattr(order, "filled_at", None) or getattr(order, "submitted_at", None)
-        if trade_ts is None:
-            continue
-        if trade_ts.tzinfo is None:
-            trade_ts = trade_ts.replace(tzinfo=timezone.utc)
-
-        age_days = (now_utc - trade_ts).total_seconds() / 86400.0
-        if age_days < 0 or age_days >= cooldown_days:
-            continue
-
-        remaining_days = max(1, math.ceil(cooldown_days - age_days))
-        reason = f"{side.upper()} {age_days:.1f}d ago ({remaining_days}d left)"
-
-        prev = blocked.get(symbol)
-        if prev is None or remaining_days > prev[0]:
-            blocked[symbol] = (remaining_days, reason)
-
-    if not blocked:
-        return {}
-
-    return {symbol: reason for symbol, (_remaining, reason) in blocked.items()}
 
 
 def submit_short_term_orders(client: TradingClient, orders: list[dict], dry_run: bool, creds: ModeCredentials = None) -> list[str]:
@@ -1074,13 +886,6 @@ def main() -> int:
             print(str(ex))
             return 2
 
-    if strategy_config is None:
-        try:
-            strategy_config = load_strategy_config(Path(args.config))
-        except (FileNotFoundError, ValueError, json.JSONDecodeError) as ex:
-            print(f"Config error: {ex}")
-            return 2
-
     now_et = datetime.now(EASTERN_TZ)
     today_et = now_et.date()
     print(f"Run mode={args.mode} run_type={args.run_type} date_et={today_et.isoformat()}")
@@ -1089,11 +894,17 @@ def main() -> int:
         if client is None:
             print("Scheduled run requires Alpaca client; provide credentials or remove --run-type scheduled.")
             return 2
-        trading_frequency = strategy_config.get("trading_frequency", "monthly")
-        run_today, reason = should_run_today(client, today_et, trading_frequency)
+        run_today, reason = should_run_today(client, today_et)
         print(reason)
         if not run_today:
             return 0
+
+    if strategy_config is None:
+        try:
+            strategy_config = load_strategy_config(Path(args.config))
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as ex:
+            print(f"Config error: {ex}")
+            return 2
 
     log_strategy_summary(strategy_config)
 
@@ -1119,13 +930,12 @@ def main() -> int:
     # Handle short-term allocation (use screener results)
     short_cfg = strategy_config.get("short_term_settings", {})
     short_bucket = strategy_config.get("buckets", {}).get("short_term", {})
-    repo_root = Path(__file__).resolve().parents[2]
-    statarb_excluded_symbols = load_statarb_excluded_symbols(strategy_config, repo_root)
     short_weight = Decimal(str(short_bucket.get("weight", 0)))
     short_order_ids: list[str] = []
     # determine number_of_assets: prefer bucket-level setting, fall back to short_term_settings
     n_assets = int(short_bucket.get("number_of_assets") or short_cfg.get("number_of_assets", 0))
     if short_weight > 0 and n_assets > 0:
+        repo_root = Path(__file__).resolve().parents[2]
         # determine screener CSV path: prefer explicit path in bucket.screener
         screener_path = short_bucket.get("screener") or short_cfg.get("screener")
         csv_path = None
@@ -1153,32 +963,18 @@ def main() -> int:
                 picks = None
 
             existing_symbols = set()
-            cooldown_cfg = short_bucket.get("recent_trade_cooldown") or strategy_config.get("recent_trade_cooldown")
-            cooldown_blocked_symbols: dict[str, str] = {}
             if client is not None:
                 try:
                     existing_symbols = {p.symbol.strip().upper() for p in client.get_all_positions()}
                 except Exception as ex:
                     print(f"Unable to read existing positions for short-term filter: {ex}")
 
-                cooldown_blocked_symbols = get_recent_trade_cooldown_symbols(client, cooldown_cfg)
-                if cooldown_blocked_symbols:
-                    preview_items = sorted(cooldown_blocked_symbols.items())[:10]
-                    preview = ", ".join(f"{sym} ({reason})" for sym, reason in preview_items)
-                    suffix = " ..." if len(cooldown_blocked_symbols) > len(preview_items) else ""
-                    print(
-                        f"Recent-trade cooldown excluded {len(cooldown_blocked_symbols)} symbols: {preview}{suffix}"
-                    )
-
-            excluded_symbols = existing_symbols.union(set(cooldown_blocked_symbols.keys()))
-            excluded_symbols = excluded_symbols.union(statarb_excluded_symbols)
-
             if picks is None:
                 n = int(n_assets)
                 picks = pick_top_n_from_screener(
                     csv_path,
                     n,
-                    existing_symbols=excluded_symbols,
+                    existing_symbols=existing_symbols,
                     correlation_dedup=short_bucket.get("correlation_dedup"),
                 )
             if not picks:
@@ -1215,14 +1011,6 @@ def main() -> int:
                     spendable_cash = (spendable_cash - spent).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
     symbol_weights = flatten_symbol_weights(strategy_config)
-    if statarb_excluded_symbols:
-        removed_symbols = {symbol for symbol in symbol_weights if symbol in statarb_excluded_symbols}
-        if removed_symbols:
-            symbol_weights = {symbol: weight for symbol, weight in symbol_weights.items() if symbol not in removed_symbols}
-            print(
-                f"Removed {len(removed_symbols)} symbols from optimize/buy allocation due to statarb exclusion: "
-                f"{', '.join(sorted(removed_symbols))}"
-            )
     if not symbol_weights:
         print("No tradable symbols configured. Exiting.")
         return 0

@@ -1,0 +1,22 @@
+{
+  "sector": null,
+  "industry": null,
+  "limit": 60,
+  "return_days": 5,
+  "lookback": 180,
+  "out": "/tmp/screener_results/breakout_predictions.csv",
+  "versioned": false,
+  "include_short_term_positions": true,
+  "model": {
+    "type": "lightgbm",
+    "n_estimators": 200,
+    "learning_rate": 0.05,
+    "random_state": 42
+  },
+  "target": {
+    "type": "breakout",
+    "horizon_days": 5,
+    "breakout_k": 1.5,
+    "train_split_days": 30
+  }
+}

@@ -238,7 +238,7 @@ Write-Success "API keys uploaded securely"
 
 Write-Info "Uploading strategy configurations to S3..."
 aws s3 cp ..\..\configs\strategy.json s3://$DataBucket/configs/ --region $Region
-aws s3 cp ..\..\configs\prediction_screener.json s3://$DataBucket/configs/ --region $Region
+aws s3 cp ..\..\configs\prediction_breakout.json s3://$DataBucket/configs/ --region $Region
 aws s3 cp ..\..\configs\equity_screener.json s3://$DataBucket/configs/ --region $Region
 
 Write-Success "Configurations uploaded"

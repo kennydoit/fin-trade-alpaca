@@ -60,7 +60,7 @@ def pick_top_n_from_screener(
                     continue
                 price = safe_float(r.get("regularMarketPrice") or r.get("close") or r.get("eodprice"))
                 score = None
-                for fld in ("pred_ret", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
+                for fld in ("pred_ret", "breakout_prob", "avg_ret", "avg_pred", "pct_1w", "pct_1m"):
                     val = safe_float(r.get(fld))
                     if val is not None:
                         score = val

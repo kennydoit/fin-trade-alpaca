@@ -1,0 +1,27 @@
+{
+  "statarb_screener": {
+    "enabled": true,
+    "lookback_days": 90,
+    "min_history_days": 60,
+    "max_symbols": 80,
+    "top_pairs": 30,
+    "min_correlation": 0.6,
+    "download_batch_size": 20,
+    "download_batch_pause": 2.0,
+    "download_max_retries": 2,
+    "download_retry_pause": 5.0,
+    "default_pair_notional": 1000.0,
+    "symbols": [
+      "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AMD",
+      "INTC", "QCOM", "CRM", "ORCL", "ADBE", "NFLX", "CSCO", "AVGO",
+      "JPM", "BAC", "GS", "MS", "WFC", "C", "USB", "BLK",
+      "XOM", "CVX", "SLB", "COP", "EOG", "OXY", "MPC", "PSX",
+      "UNH", "LLY", "ABBV", "PFE", "MRK", "BMY", "TMO", "DHR",
+      "CAT", "DE", "BA", "GE", "HON", "LMT", "RTX", "ETN",
+      "WMT", "COST", "PG", "KO", "PEP", "MCD", "SBUX", "NKE",
+      "HD", "LOW", "AMAT", "LRCX", "KLAC", "MU", "TXN", "ADI",
+      "NEE", "DUK", "SO", "EXC", "AEP", "D", "CEG", "SRE",
+      "LIN", "APD", "FCX", "NEM", "DOW", "ECL", "SHW", "NUE"
+    ]
+  }
+}

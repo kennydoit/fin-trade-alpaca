@@ -24,33 +24,42 @@ from .charts import MATPLOTLIB_INSTALLED, save_actual_vs_predicted_chart
 from .data_loading import download_price_history, find_latest_screener_file
 from .feature_engineering import (
     build_dataset,
+    compute_breakout_target,
     compute_excess_return_target,
+    make_breakout_features,
     make_technical_features,
     prepare_features,
 )
 from .model_training import (
     LGB_INSTALLED,
+    build_classifier,
     build_model,
     compute_feature_importance,
     train_and_evaluate,
+    train_and_evaluate_breakout,
     tune_model,
 )
-from .scoring import score_latest
+from .scoring import score_latest, score_latest_breakout
 
 __all__ = [
     "LGB_INSTALLED",
     "MATPLOTLIB_INSTALLED",
+    "build_classifier",
     "build_dataset",
     "build_model",
+    "compute_breakout_target",
     "compute_excess_return_target",
     "compute_feature_importance",
     "download_price_history",
     "find_latest_screener_file",
+    "make_breakout_features",
     "make_technical_features",
     "prepare_features",
     "save_actual_vs_predicted_chart",
     "score_latest",
+    "score_latest_breakout",
     "train_and_evaluate",
+    "train_and_evaluate_breakout",
     "tune_model",
     "main",
 ]

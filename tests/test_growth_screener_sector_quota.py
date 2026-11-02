@@ -10,10 +10,7 @@ import yfinance.screener.yfinance_equity_screener as eq_screener
 def test_get_candidates_enforces_per_sector_quota(monkeypatch):
     def fake_screen_equities(limit=200, sector=None, **kwargs):
         assert limit == 4
-        return [
-            {"symbol": f"{sector[:2].upper()}{i}", "sector": sector, "industry": "X"}
-            for i in range(1, 6)
-        ]
+        return [{"symbol": f"{sector[:2].upper()}{i}", "sector": sector, "industry": "X"} for i in range(1, 6)]
 
     monkeypatch.setattr(eq_screener, "screen_equities", fake_screen_equities)
 

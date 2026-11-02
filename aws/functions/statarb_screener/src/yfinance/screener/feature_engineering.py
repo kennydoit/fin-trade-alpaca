@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from .data_loading import download_price_history
+from .data_loading import download_ohlcv_history, download_price_history
 
 
 def make_technical_features(adj: pd.Series) -> pd.DataFrame:
@@ -26,6 +26,29 @@ def make_technical_features(adj: pd.Series) -> pd.DataFrame:
     df["sma_10"] = df["close"].rolling(10).mean()
     df["price_sma10_z"] = (df["close"] - df["sma_10"]) / df["close"].rolling(60).std()
     return df
+
+
+def make_breakout_features(close: pd.Series, high: pd.Series, low: pd.Series, volume: pd.Series) -> pd.DataFrame:
+    """Compute breakout-oriented features for one symbol.
+
+    Every value at index ``t`` uses data up to and including ``t`` only (trailing
+    windows), so these are valid point-in-time features.
+    """
+    prev_close = close.shift(1)
+    true_range = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    atr_10 = true_range.rolling(10).mean()
+    atr_30 = true_range.rolling(30).mean()
+    bb_width = 4.0 * close.rolling(20).std() / close.rolling(20).mean()
+    range_low_10 = low.rolling(10).min()
+    range_high_10 = high.rolling(10).max()
+
+    out = pd.DataFrame(index=close.index)
+    out["dist_high_20d"] = close / high.rolling(20).max() - 1.0
+    out["atr_ratio_10_30"] = atr_10 / atr_30
+    out["bb_width_rel"] = bb_width / bb_width.rolling(60, min_periods=10).median()
+    out["vol_surge_5_20"] = volume.rolling(5).mean() / volume.rolling(20).mean()
+    out["close_in_range_10d"] = (close - range_low_10) / (range_high_10 - range_low_10)
+    return out.replace([np.inf, -np.inf], np.nan)
 
 
 _CANDIDATE_METADATA_COLUMNS = [
@@ -43,7 +66,11 @@ _CANDIDATE_METADATA_COLUMNS = [
 
 
 def build_dataset(  # noqa: PLR0915 - sequential dataset-construction pipeline; splitting further would obscure the single linear flow
-    cand_df: pd.DataFrame, symbols: list[str], lookback: int, return_days: int
+    cand_df: pd.DataFrame,
+    symbols: list[str],
+    lookback: int,
+    return_days: int,
+    include_breakout: bool = False,
 ) -> pd.DataFrame:
     """Build a training dataset (technical features + forward returns) from historical prices.
 
@@ -52,13 +79,21 @@ def build_dataset(  # noqa: PLR0915 - sequential dataset-construction pipeline; 
         symbols: List of symbols to process.
         lookback: Days of historical data to fetch.
         return_days: Forward return horizon.
+        include_breakout: If True, download OHLCV, add breakout features, and record
+            ``fwd_max_ret`` (max forward close over the horizon vs. today's close)
+            so a breakout label can be derived with :func:`compute_breakout_target`.
 
     Returns:
         DataFrame with features and forward returns, or an empty DataFrame if
         insufficient data was available for any symbol.
     """
     print(f"Downloading {lookback + return_days + 5} days of history for {len(symbols)} symbols...")
-    adj = download_price_history(symbols, lookback + return_days + 5)
+    ohlcv: dict[str, pd.DataFrame] = {}
+    if include_breakout:
+        ohlcv = download_ohlcv_history(symbols, lookback + return_days + 5)
+        adj = ohlcv.get("close", pd.DataFrame())
+    else:
+        adj = download_price_history(symbols, lookback + return_days + 5)
 
     if adj.empty:
         print("WARNING: No price data downloaded. Check yfinance connectivity or symbol validity.")
@@ -77,8 +112,16 @@ def build_dataset(  # noqa: PLR0915 - sequential dataset-construction pipeline; 
     symbols_skipped_short = 0
     symbols_no_training_window = 0
 
+    symbol_meta = cand_df.copy()
+    if not symbol_meta.empty:
+        symbol_meta["symbol"] = symbol_meta["symbol"].astype(str).str.upper()
+        if "date" in symbol_meta.columns:
+            symbol_meta["date"] = pd.to_datetime(symbol_meta["date"], errors="coerce")
+
     for sym in symbols:
         if sym not in adj.columns:
+            continue
+        if include_breakout and any(sym not in ohlcv[k].columns for k in ("high", "low", "volume")):
             continue
         series = adj[sym].dropna()
         if len(series) < 30:
@@ -87,28 +130,43 @@ def build_dataset(  # noqa: PLR0915 - sequential dataset-construction pipeline; 
 
         symbols_processed += 1
         tech = make_technical_features(series)
+        if include_breakout:
+            tech = tech.join(
+                make_breakout_features(
+                    series,
+                    ohlcv["high"][sym].reindex(series.index),
+                    ohlcv["low"][sym].reindex(series.index),
+                    ohlcv["volume"][sym].reindex(series.index),
+                )
+            )
 
         training_window_size = len(tech) - return_days - 30
         if training_window_size <= 0:
             symbols_no_training_window += 1
             continue
 
-        row_meta = cand_df[cand_df["symbol"].astype(str) == sym]
+        row_meta = symbol_meta[symbol_meta["symbol"].astype(str) == sym] if not symbol_meta.empty else pd.DataFrame()
         for t_idx in range(30, len(tech) - return_days):
             date = tech.index[t_idx]
             feat_row = tech.iloc[t_idx].to_dict()
             future_price = series.iloc[t_idx + return_days]
             price = series.iloc[t_idx]
             fwd_ret = (future_price / price) - 1.0
-            meta = {}
-            if not row_meta.empty:
-                for col in _CANDIDATE_METADATA_COLUMNS:
-                    if col in row_meta.columns:
-                        val = row_meta.iloc[0].get(col)
-                        if isinstance(val, (int, float)) and np.isinf(val):
-                            val = np.nan
-                        meta[col] = val
+            meta = {col: np.nan for col in _CANDIDATE_METADATA_COLUMNS if col in row_meta.columns}
+            if not row_meta.empty and "date" in row_meta.columns:
+                candidate_dates = row_meta["date"].dropna()
+                if not candidate_dates.empty:
+                    candidate_snapshot = row_meta[row_meta["date"].eq(pd.Timestamp(date))]
+                    if not candidate_snapshot.empty:
+                        for col in _CANDIDATE_METADATA_COLUMNS:
+                            if col in candidate_snapshot.columns:
+                                val = candidate_snapshot.iloc[0].get(col)
+                                if isinstance(val, (int, float)) and np.isinf(val):
+                                    val = np.nan
+                                meta[col] = val
             rec = {"date": date, "symbol": sym, "fwd_ret": fwd_ret}
+            if include_breakout:
+                rec["fwd_max_ret"] = series.iloc[t_idx + 1 : t_idx + return_days + 1].max() / price - 1.0
             rec.update({k: (v if v is not None else np.nan) for k, v in feat_row.items()})
             rec.update(meta)
             rows.append(rec)
@@ -153,6 +211,27 @@ def compute_excess_return_target(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def compute_breakout_target(df: pd.DataFrame, return_days: int, breakout_k: float = 1.5) -> pd.DataFrame:
+    """Add a volatility-scaled forward breakout label.
+
+    ``breakout_label = 1`` when the maximum close over the next ``return_days`` days
+    exceeds today's close by at least ``breakout_k * vol_10d * sqrt(return_days)``,
+    where ``vol_10d`` is the trailing daily-return volatility known at the label date.
+    Scaling by volatility keeps the base rate comparable between quiet and volatile
+    names. Rows without a usable volatility or forward path are dropped.
+    """
+    missing = [c for c in ("fwd_max_ret", "vol_10d") if c not in df.columns]
+    if missing:
+        raise ValueError(f"Breakout target requires columns {missing}; build the dataset with include_breakout=True")
+    df = df.copy()
+    vol = df["vol_10d"].where(df["vol_10d"] > 0)
+    threshold = float(breakout_k) * vol * np.sqrt(int(return_days))
+    valid = threshold.notna() & df["fwd_max_ret"].notna()
+    df["breakout_threshold"] = threshold
+    df["breakout_label"] = (df["fwd_max_ret"] >= threshold).astype(float).where(valid)
+    return df.dropna(subset=["breakout_label"])
+
+
 def prepare_features(
     df: pd.DataFrame, scaler=None, fit_scaler: bool = False, use_standardization: bool = False
 ) -> tuple[pd.DataFrame, list[str], StandardScaler | None]:
@@ -170,7 +249,18 @@ def prepare_features(
     Returns:
         Tuple of (transformed features, feature column names, fitted scaler or None).
     """
-    drop_cols = ["date", "symbol", "fwd_ret", "fwd_ret_target", "sector", "industry", "screener_rank"]
+    drop_cols = [
+        "date",
+        "symbol",
+        "fwd_ret",
+        "fwd_ret_target",
+        "fwd_max_ret",
+        "breakout_label",
+        "breakout_threshold",
+        "sector",
+        "industry",
+        "screener_rank",
+    ]
     feat_cols = [c for c in df.columns if c not in drop_cols]
     # Note: fillna handled by enhance_features, but add safety checks
     X = df[feat_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)

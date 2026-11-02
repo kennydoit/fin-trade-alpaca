@@ -56,7 +56,7 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 BUCKET="fin-trade-alpaca-dev-${ACCOUNT_ID}"
 
 aws s3 cp ../configs/strategy.json s3://${BUCKET}/configs/
-aws s3 cp ../configs/prediction_screener.json s3://${BUCKET}/configs/
+aws s3 cp ../configs/prediction_breakout.json s3://${BUCKET}/configs/
 aws s3 cp ../configs/equity_screener.json s3://${BUCKET}/configs/
 ```
 
@@ -66,7 +66,7 @@ $ACCOUNT_ID = (aws sts get-caller-identity --query Account --output text)
 $BUCKET = "fin-trade-alpaca-dev-$ACCOUNT_ID"
 
 aws s3 cp ..\configs\strategy.json s3://$BUCKET/configs/
-aws s3 cp ..\configs\prediction_screener.json s3://$BUCKET/configs/
+aws s3 cp ..\configs\prediction_breakout.json s3://$BUCKET/configs/
 aws s3 cp ..\configs\equity_screener.json s3://$BUCKET/configs/
 ```
 

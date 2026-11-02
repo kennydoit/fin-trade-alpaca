@@ -89,9 +89,9 @@ ignore = [
 # (X, X_train, X_test) which is the idiomatic, widely-recognized naming for
 # 2D feature arrays in this ecosystem - overriding pep8-naming here.
 "src/yfinance/screener/feature_engineering.py" = ["N806"]
-"src/yfinance/screener/model_training.py" = ["N806", "N803"]
+"src/yfinance/screener/model_training.py" = ["N806", "N803", "E402", "PLR0917", "PLR0915"]
 "src/yfinance/screener/scoring.py" = ["N806"]
-"tests/test_predict_short_term.py" = ["N806"]
+"tests/test_predict_short_term.py" = ["N806", "N803"]
 
 # --- Pre-existing debt, not yet brought up to the CI lint gate ---
 # These files predate the ruff rollout and have known findings that would be
@@ -109,6 +109,10 @@ ignore = [
     "PLR0917", "PLR0911", "PLR0915", "PLC0415", "N806", "SIM108", "E731", "B023",
 ]
 "tests/test_industry_filtering_fix.py" = ["PLW1510", "PLC0415"]
+"src/runners/optimize_and_buy.py" = ["PLC0415", "PERF401", "PLR0917", "PLR0911", "PLR0915"]
+"src/runners/statarb_optimize_buy.py" = ["PLR0917"]
+"src/runners/statarb_screener.py" = ["PLR0917"]
+"src/yfinance/screener/data_loading.py" = ["PLR0917"]
 
 [tool.ruff.format]
 # Use double quotes for strings

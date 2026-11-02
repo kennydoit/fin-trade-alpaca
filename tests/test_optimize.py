@@ -3,8 +3,8 @@ import importlib.util
 import json
 import sys
 import types
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fin_trade_alpaca.order_execution import distribute_notionals
@@ -85,7 +85,7 @@ def test_main_scheduled_run_uses_configured_trading_frequency(monkeypatch):
 
 
 def test_recent_trade_cooldown_blocks_recent_symbols():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     class Side:
         def __init__(self, value):
@@ -124,10 +124,7 @@ def test_recent_trade_cooldown_blocks_recent_symbols():
 def test_load_statarb_excluded_symbols_uses_top_pairs_and_min_score(tmp_path):
     pairs_csv = Path(tmp_path) / "pairs.csv"
     pairs_csv.write_text(
-        "pair_id,long_symbol,short_symbol,score\n"
-        "AAA_BBB,AAA,BBB,2.0\n"
-        "CCC_DDD,CCC,DDD,1.4\n"
-        "EEE_FFF,EEE,FFF,0.8\n",
+        "pair_id,long_symbol,short_symbol,score\nAAA_BBB,AAA,BBB,2.0\nCCC_DDD,CCC,DDD,1.4\nEEE_FFF,EEE,FFF,0.8\n",
         encoding="utf-8",
     )
 
@@ -230,9 +227,7 @@ def test_run_ai_advisory_writes_report(tmp_path, monkeypatch):
 def test_pick_top_n_candidates_from_screener_includes_trigger_metadata(tmp_path):
     csv_path = Path(tmp_path) / "predictions.csv"
     csv_path.write_text(
-        "symbol,regularMarketPrice,pred_ret,avg_ret,prediction_rank\n"
-        "AAPL,100,0.9,0.2,1\n"
-        "MSFT,50,0.7,0.1,2\n",
+        "symbol,regularMarketPrice,pred_ret,avg_ret,prediction_rank\nAAPL,100,0.9,0.2,1\nMSFT,50,0.7,0.1,2\n",
         encoding="utf-8",
     )
 
@@ -335,7 +330,7 @@ def test_apply_ai_actions_to_notionals_live_mode_noop():
 
 
 def test_recent_trade_cooldown_sell_override_env(monkeypatch):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     class Side:
         def __init__(self, value):
@@ -395,7 +390,7 @@ def test_optimize_buy_handler_summary_includes_detailed_orders():
         [
             'ORDER_SUMMARY|{"status":"planned","section":"short_term","symbol":"AAPL","notional":"100.00","trigger_description":"prediction_rank=1, pred_ret=0.9"}',
             'ORDER_SUMMARY|{"status":"submitted","section":"short_term","symbol":"AAPL","notional":"100.00","trigger_description":"prediction_rank=1, pred_ret=0.9"}',
-            'Submitted AAPL order id=xyz notional=$100.00',
+            "Submitted AAPL order id=xyz notional=$100.00",
         ]
     )
 

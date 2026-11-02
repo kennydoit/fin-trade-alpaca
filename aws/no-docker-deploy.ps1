@@ -270,7 +270,7 @@ $ErrorActionPreference = "Stop"
 Write-Info "Uploading strategy configurations to S3..."
 $ErrorActionPreference = "Continue"
 aws s3 cp ..\..\configs\strategy.json s3://$DataBucket/configs/ --region $Region 2>&1 | Out-Null
-aws s3 cp ..\..\configs\prediction_screener.json s3://$DataBucket/configs/ --region $Region 2>&1 | Out-Null
+aws s3 cp ..\..\configs\prediction_breakout.json s3://$DataBucket/configs/ --region $Region 2>&1 | Out-Null
 aws s3 cp ..\..\configs\equity_screener.json s3://$DataBucket/configs/ --region $Region 2>&1 | Out-Null
 $ErrorActionPreference = "Stop"
 
