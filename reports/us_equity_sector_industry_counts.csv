@@ -1,0 +1,21 @@
+INDUSTRY,SECTOR,NUMBER_OF_ASSETS
+Software - Application,Technology,81
+Software - Infrastructure,Technology,64
+Semiconductors,Technology,30
+Information Technology Services,Technology,24
+Electronic Components,Technology,17
+Communication Equipment,Technology,14
+Scientific & Technical Instruments,Technology,12
+Semiconductor Equipment & Materials,Technology,12
+Biotechnology,Healthcare,9
+Computer Hardware,Technology,8
+Solar,Technology,5
+Diagnostics & Research,Healthcare,3
+Drug Manufacturers - Specialty & Generic,Healthcare,3
+Electronics & Computer Distribution,Technology,3
+Health Information Services,Healthcare,3
+Medical Instruments & Supplies,Healthcare,3
+Consumer Electronics,Technology,2
+Medical Devices,Healthcare,2
+nan,nan,2
+Medical Care Facilities,Healthcare,1

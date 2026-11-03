@@ -1,0 +1,2 @@
+target,holdout_days,n_train,n_holdout,n_features,train_r2,train_mape,train_smape,holdout_r2,holdout_mape,holdout_smape
+ret_5d,5,1144,65,5,0.9144955363145741,4744.885195022128,0.5561656316564036,0.7598499737758522,19406.706553294393,0.7394794666387523

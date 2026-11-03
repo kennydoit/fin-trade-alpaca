@@ -1,0 +1,4 @@
+symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE,score_raw,score_norm,rank,pct_1w_n,pct_1m_n,rel_volume_n,revenueGrowth_n,earningsQuarterlyGrowth_n,rec_n,insider_n,valuation_n,kept,dropped_due_to
+OCTV,Octave Intelligence plc,NMS,Technology,Software - Application,21.77,19.93,0.9625,-9.2441,0.1657,,,,17.3304,0.429438,0.502113,17,0.568285,0.278709,0.117915,0.5,0.5,0.5,0.5,0.748775,False,OCTVV
+QBTS,D-Wave Quantum Inc.,NYQ,Technology,Computer Hardware,25.83,24.925,-9.5826,3.6621,0.2311,-0.809,,,,0.330036,0.303112,141,0.353636,0.38429,0.169326,0.01206,0.5,0.5,0.5,0.5,False,IONQ
+SWKS,"Skyworks Solutions, Inc.",NMS,Technology,Semiconductors,75.37,75.635,-6.3538,8.643,0.0773,-0.01,-0.482,1.59,31.4729,0.314077,0.271162,166,0.41936,0.425037,0.048424,0.106526,0.0121,0.5,0.5,0.963112,False,QRVO

@@ -1,0 +1,2 @@
+screener_rank,score_raw,score_norm,pct_1w_n,pct_1m_n,rel_volume_n,revenueGrowth_n,earningsQuarterlyGrowth_n,rec_n,insider_n,valuation_n,symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE,kept,dropped_due_to
+74,0.322486,0.237611,0.169735,0.288427,0.221364,0.333846,0.5,0.5,0.5,0.992556,ZG,"Zillow Group, Inc.",NMS,Communication Services,Internet Content & Information,32.0,31.215,-6.1691,-9.1492,0.3399,0.179,,0.92,135.5652,False,Z

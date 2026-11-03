@@ -1,0 +1,5 @@
+screener_rank,score_raw,score_norm,pct_1w_n,pct_1m_n,rel_volume_n,revenueGrowth_n,earningsQuarterlyGrowth_n,rec_n,insider_n,valuation_n,symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE
+1,0.646311,1.000000,1.000000,0.451728,1.000000,0.000000,0.500000,0.500000,0.500000,0.500000,ZYME,Zymeworks Inc.,NMS,Healthcare,Biotechnology,27.47,29.01,9.1833,26.1304,1.5407,-0.9060,,,
+2,0.507237,0.656696,0.289259,1.000000,0.000309,0.931897,0.500000,0.500000,0.500000,0.479025,ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,27.88,28.39,1.9390,36.8852,0.2469,0.4350,,0.7700,inf
+3,0.422360,0.447176,0.484234,0.000000,0.082599,0.619875,1.000000,0.500000,0.500000,1.000000,YEXT,"Yext, Inc.",NYQ,Technology,Software - Infrastructure,6.58,6.485,3.9263,17.2694,0.3534,-0.0140,2.4090,0.3365,81.0625
+4,0.241208,0.000000,0.000000,0.201154,0.000000,1.000000,0.000000,0.500000,0.500000,0.500000,ZVRA,"Zevra Therapeutics, Inc.",NMS,Healthcare,Biotechnology,12.04,11.77,-1.0093,21.2152,0.2465,0.5330,-0.8830,10.6700,12.6559

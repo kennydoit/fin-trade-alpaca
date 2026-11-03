@@ -1,0 +1,4 @@
+symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE
+ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,21.87,21.4099,2.7346,-1.6089,0.1603,0.4990,,0.7700,
+YEXT,"Yext, Inc.",NYQ,Technology,Software - Infrastructure,5.13,5.075,3.9959,30.1282,0.0641,-0.0140,2.4090,0.2633,63.4375
+XNET,Xunlei Limited,NMS,Technology,Software - Infrastructure,5.6,5.665,-2.9966,17.5311,0.0402,0.5390,,2.5800,0.4344

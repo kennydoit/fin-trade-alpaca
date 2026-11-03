@@ -1,0 +1,5 @@
+screener_rank,score_raw,score_norm,pct_1w_n,pct_1m_n,rel_volume_n,revenueGrowth_n,earningsQuarterlyGrowth_n,rec_n,insider_n,valuation_n,symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE,kept,dropped_due_to
+1,0.678852,1.0,0.995277,0.765768,0.057952,1.0,0.5,0.5,0.5,0.454774,ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,30.85,30.36,0.5964,5.307,0.3215,0.435,,0.77,inf,True,
+2,0.612734,0.879664,1.0,0.2593,1.0,0.00883,0.5,0.5,0.5,0.5,XNET,Xunlei Limited,NMS,Technology,Software - Infrastructure,4.91,4.93,0.6122,-0.8048,0.6076,-0.014,,2.58,0.3649,True,
+3,0.604245,0.864215,0.42001,1.0,0.760948,0.0,1.0,0.5,0.5,0.75,YEXT,"Yext, Inc.",NYQ,Technology,Software - Infrastructure,6.39,6.315,-1.3281,8.1336,0.535,-0.018,-0.508,,37.1471,True,
+4,0.129404,0.0,0.0,0.0,0.0,0.245033,0.0,0.5,0.5,1.0,XYZ,"Block, Inc.",NYQ,Technology,Software - Infrastructure,76.63,77.06,-2.7332,-3.9339,0.3039,0.093,-0.836,0.59,137.5804,True,

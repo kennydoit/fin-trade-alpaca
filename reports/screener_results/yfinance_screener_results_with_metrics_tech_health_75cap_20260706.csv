@@ -1,0 +1,199 @@
+symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE
+ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,20.7,21.07,6.8424,-3.1250,0.1875,0.4990,,0.7700,
+YOU,"Clear Secure, Inc.",NYQ,Technology,Software - Application,53.79,56.97,1.4992,3.7301,0.1443,0.1970,0.5270,0.8633,45.4960
+YMM,Full Truck Alliance Co. Ltd.,NYQ,Technology,Software - Application,8.43,8.58,6.2500,2.8144,0.0900,0.0550,-0.2190,,14.5508
+YALA,Yalla Group Limited,NYQ,Technology,Software - Application,5.48,5.475,-2.5801,2.5281,0.1343,-0.0580,-0.2200,0.5900,6.9304
+XPER,Xperi Inc.,NYQ,Technology,Software - Application,8.2,8.365,1.3939,9.7769,0.1078,0.0020,,,
+XNET,Xunlei Limited,NMS,Technology,Software - Infrastructure,5.64,5.75,6.1922,19.1909,0.1344,0.5390,,2.5800,0.4252
+WSE,Wise Group plc,NMS,Technology,Information Technology Services,12.95,12.97,6.0507,19.6494,0.1665,0.2680,-0.0670,4.9200,27.0208
+WOLF,"Wolfspeed, Inc.",NYQ,Technology,Semiconductors,40.0,41.9,-5.1763,-24.3053,0.2116,-0.1900,,,
+WLTH,Wealthfront Corporation,NMS,Technology,Software - Application,9.14,9.265,2.3757,10.1665,0.0647,0.0710,-0.5050,,
+WK,Workiva Inc.,NYQ,Technology,Software - Application,51.93,51.13,4.5464,5.6936,0.0602,0.1990,,,212.7083
+WIX,Wix.com Ltd.,NMS,Technology,Software - Infrastructure,49.35,47.97,4.0239,-0.4858,0.0733,0.1430,,0.1100,
+VYX,NCR Voyix Corporation,NYQ,Technology,Information Technology Services,8.7,8.7457,9.3867,26.1183,0.1485,-0.0100,,2.6800,31.2143
+VSH,"Vishay Intertechnology, Inc.",NYQ,Technology,Semiconductors,45.92,49.07,-12.7932,-14.0834,0.2478,0.1730,,1.3500,4908.0005
+VRNS,"Varonis Systems, Inc.",NMS,Technology,Software - Infrastructure,42.86,43.995,9.4255,33.1719,0.1561,0.2690,,7.3800,
+VNT,Vontier Corporation,NYQ,Technology,Scientific & Technical Instruments,28.62,28.575,-0.5050,0.5456,0.0636,0.0130,0.0730,0.8500,10.0936
+VNET,"VNET Group, Inc.",NMS,Technology,Information Technology Services,7.92,8.02,6.8575,-9.5265,0.1935,0.1980,,0.4500,
+VISN,"Vistance Networks, Inc.",NMS,Technology,Communication Equipment,12.15,12.305,-4.4643,2.3710,0.0754,0.2160,6.0260,2.9400,18.0956
+VIAV,Viavi Solutions Inc.,NMS,Technology,Communication Equipment,41.66,44.41,-6.2961,-8.8718,0.1165,0.4280,-0.6720,1.3400,
+VIA,"Via Transportation, Inc.",NYQ,Technology,Software - Application,19.31,19.38,3.8029,29.9799,0.1528,0.2920,,,
+VECO,Veeco Instruments Inc.,NMS,Technology,Semiconductor Equipment & Materials,57.49,58.035,-16.4773,-4.9423,0.1296,-0.0540,,0.8100,152.6926
+UPBD,"Upbound Group, Inc.",NMS,Technology,Software - Application,19.89,19.62,-6.0882,6.7030,0.1068,0.0370,0.4440,1.3900,13.6042
+UMC,United Microelectronics Corpora,NYQ,Technology,Semiconductors,24.54,26.6,-0.8942,33.0000,0.1695,0.0550,1.0790,1.8400,42.9032
+UBER,"Uber Technologies, Inc.",NYQ,Technology,Software - Application,74.43,72.44,-4.0000,3.4542,0.1649,0.1450,-0.8520,6.0400,17.9851
+U,Unity Software Inc.,NYQ,Technology,Software - Application,29.32,29.11,2.8082,1.0590,0.1194,0.1680,,,
+TSAT,Telesat Corporation,NMS,Technology,Communication Equipment,46.23,47.8699,4.0650,6.9241,0.0789,-0.2540,,,
+TRMB,Trimble Inc.,NMS,Technology,Scientific & Technical Instruments,53.04,52.35,3.2598,-2.2469,0.1155,0.1180,0.4830,1.4800,27.4476
+TOST,"Toast, Inc.",NYQ,Technology,Software - Infrastructure,28.82,28.71,2.0064,19.1909,0.1311,0.2190,1.2500,0.2300,42.8731
+TENB,"Tenable Holdings, Inc.",NMS,Technology,Software - Infrastructure,38.6,42.32,26.0376,53.1567,0.2830,0.0960,,0.9900,
+TDC,Teradata Corporation,NYQ,Technology,Software - Infrastructure,34.56,34.855,1.5589,3.4273,0.0859,0.0620,6.6140,6.0000,7.9760
+TASK,"TaskUs, Inc.",NMS,Technology,Information Technology Services,5.03,5.065,5.6367,-10.6007,0.1121,0.1030,0.1510,0.2965,4.4779
+SWKS,"Skyworks Solutions, Inc.",NMS,Technology,Semiconductors,62.56,63.86,-5.6639,-15.2514,0.1078,-0.0100,-0.4820,1.3500,26.6146
+SVCO,"Silvaco Group, Inc.",NMS,Technology,Software - Application,11.1,11.49,-7.0161,0.3481,0.3098,0.2600,,,
+STNE,StoneCo Ltd.,NMS,Technology,Software - Infrastructure,11.17,10.56,-3.1221,-0.1892,0.1490,0.0430,2.3170,0.0170,3.9366
+STM,STMicroelectronics N.V.,NYQ,Technology,Semiconductors,68.35,72.76,-2.5806,-2.7568,0.1708,0.2300,-0.3390,0.4900,455.2500
+ST,Sensata Technologies Holding pl,NYQ,Technology,Scientific & Technical Instruments,45.34,46.71,-0.4265,-6.9364,0.0368,0.0260,0.2460,0.2700,141.4848
+SSYS,"Stratasys, Ltd.",NMS,Technology,Computer Hardware,8.135,8.22,0.3663,-8.2589,0.0543,-0.0250,,2.0600,
+SSNC,"SS&C Technologies Holdings, Inc",NMS,Technology,Software - Application,65.52,64.85,3.1775,-4.7802,0.0488,0.0880,0.0620,0.6800,20.1677
+SRAD,Sportradar Group AG,NMS,Technology,Software - Application,15.01,15.0,-0.7280,-1.7038,0.0762,0.1130,,,60.0000
+SPSC,"SPS Commerce, Inc.",NMS,Technology,Software - Application,59.065,58.22,0.9187,5.4519,0.0775,0.0580,-0.1110,4.5500,24.1577
+SONY,Sony Group Corporation,NYQ,Technology,Consumer Electronics,20.79,21.125,3.4019,-4.6275,0.1493,0.0830,-0.5810,1.9100,19.9292
+SONO,"Sonos, Inc.",NMS,Technology,Consumer Electronics,13.62,13.79,1.5464,-7.8209,0.1213,0.0840,,,81.1176
+SMWB,Similarweb Ltd.,NYQ,Technology,Software - Application,6.18,6.1,-1.2945,47.6998,0.1242,0.1010,,,
+SMCI,"Super Micro Computer, Inc.",NMS,Technology,Computer Hardware,27.22,27.345,-2.8409,-37.8261,0.2002,1.2270,3.4440,0.9100,14.3949
+SEDG,"SolarEdge Technologies, Inc.",NMS,Technology,Solar,52.38,55.04,-0.8219,-14.1439,0.1082,0.4150,,4.6100,
+SECZ,Securitize Corp.,NYQ,Technology,Software - Application,12.3,12.1317,-1.2195,-1.2195,0.3266,,,,
+SCSC,"ScanSource, Inc.",NMS,Technology,Electronics & Computer Distribution,50.87,50.955,-0.6338,5.8255,0.1047,0.0880,-0.0310,0.7700,15.4878
+SAIL,"SailPoint, Inc.",NMS,Technology,Software - Infrastructure,15.27,15.57,13.4111,-12.0407,0.0636,0.2160,,,
+S,"SentinelOne, Inc.",NYQ,Technology,Software - Infrastructure,17.51,18.645,11.4166,18.3492,0.3956,0.2080,,,
+RXT,"Rackspace Technology, Inc.",NMS,Technology,Software - Infrastructure,5.72,6.32,-3.3460,40.9091,0.1359,0.0190,,4.9300,
+RUN,Sunrun Inc.,NMS,Technology,Solar,12.74,12.93,-4.0801,-3.9376,0.1568,0.4320,2.3520,3.0700,6.0704
+RSKD,Riskified Ltd.,NYQ,Technology,Software - Application,5.13,5.08,1.1952,4.9587,0.1965,0.0710,,,
+RNG,"Ringcentral, Inc.",NYQ,Technology,Software - Application,40.01,38.62,-1.2024,-5.5053,0.1196,0.0530,,0.2200,41.0851
+RELY,"Remitly Global, Inc.",NMS,Technology,Software - Infrastructure,23.75,23.765,4.3221,28.8618,0.0559,0.2520,3.3210,0.1491,49.5312
+RDWR,Radware Ltd.,NMS,Technology,Software - Infrastructure,29.69,30.615,2.3913,7.6098,0.0368,0.1070,-0.1840,22.7900,69.5795
+RAMP,"LiveRamp Holdings, Inc.",NYQ,Technology,Software - Infrastructure,37.73,37.665,0.6278,0.4668,0.0475,0.0920,,0.5900,16.8901
+RAL,Ralliant Corporation,NYQ,Technology,Electronic Components,68.36,70.575,-2.5342,15.6398,0.0691,0.1100,-0.3080,,
+QTWO,"Q2 Holdings, Inc.",NYQ,Technology,Software - Application,52.63,52.14,10.7506,16.5328,0.0531,0.1410,4.6050,8.3500,46.2212
+QBTS,D-Wave Quantum Inc.,NYQ,Technology,Computer Hardware,22.53,23.2804,-2.3500,-9.9110,0.1654,-0.8090,,,
+PTRN,Pattern Group Inc. - Series A,NMS,Technology,Software - Application,26.43,27.8205,13.9059,41.0127,0.3761,0.4320,0.2810,,
+PSN,Parsons Corporation,NYQ,Technology,Information Technology Services,56.29,56.36,9.8207,-2.5419,0.0598,-0.0410,-0.2010,,26.9665
+PSFE,Paysafe Limited,NYQ,Technology,Software - Infrastructure,8.41,8.145,10.5156,18.5590,0.1910,0.1040,,,
+PRGS,Progress Software Corporation,NMS,Technology,Software - Infrastructure,38.42,38.02,12.3522,22.0154,0.0907,0.0680,0.2370,1.2900,18.4563
+POWI,"Power Integrations, Inc.",NMS,Technology,Semiconductors,72.99,77.44,-1.9250,0.9911,0.0620,0.0260,-0.6250,1.5100,258.1333
+PONY,Pony AI Inc.,NMS,Technology,Information Technology Services,6.83,6.865,-1.3649,-23.3817,0.1941,1.4500,,,
+PLAB,"Photronics, Inc.",NMS,Technology,Semiconductor Equipment & Materials,28.86,29.752,-5.0512,-0.8678,0.2559,-0.0050,2.5470,2.6400,10.9594
+PICS,PicS N.V.,NMS,Technology,Software - Infrastructure,11.06,11.16,4.8872,18.4713,0.0677,0.7020,1.0200,0.0636,6.4884
+PENG,"Penguin Solutions, Inc.",NMS,Technology,Information Technology Services,61.47,69.75,2.8334,8.1000,0.2949,-0.0620,3.6340,0.2746,99.8071
+PEGA,Pegasystems Inc.,NMS,Technology,Software - Application,31.045,30.525,0.3468,-12.9718,0.1211,-0.0960,-0.6160,3.5700,16.5000
+PDFS,"PDF Solutions, Inc.",NMS,Technology,Software - Application,59.18,60.3,-8.0173,7.6998,0.1223,0.2590,,4.1900,336.8611
+PD,"PagerDuty, Inc.",NYQ,Technology,Software - Application,9.98,9.82,5.0107,8.9602,0.1112,0.0100,,,4.7585
+PCOR,"Procore Technologies, Inc.",NYQ,Technology,Software - Application,43.97,43.44,5.9756,-8.3527,0.1171,0.1570,,,
+PAYP,PayPay Corporation - American D,NMS,Technology,Software - Infrastructure,14.71,15.21,4.4643,0.2637,0.1861,0.2910,0.3950,1.4400,13.7027
+PAY,"Paymentus Holdings, Inc.",NYQ,Technology,Software - Infrastructure,27.06,26.85,11.8284,30.7842,0.1146,0.3020,0.5120,0.9200,47.1053
+PATH,"UiPath, Inc.",NYQ,Technology,Software - Infrastructure,11.71,11.76,10.1592,5.3268,0.1048,0.1730,,0.4200,19.6083
+PAR,PAR Technology Corporation,NYQ,Technology,Software - Application,19.05,18.48,7.0684,39.1566,0.1031,0.1940,,0.7700,
+PAGS,PagSeguro Digital Ltd.,NYQ,Technology,Software - Infrastructure,9.12,8.735,-3.9648,2.2274,0.2534,0.0150,0.0390,1.5857,6.1844
+OUST,"Ouster, Inc.",NMS,Technology,Electronic Components,49.84,53.42,-1.2021,30.6751,0.4050,0.4890,,,
+OTEX,Open Text Corporation,NMS,Technology,Software - Application,23.04,22.78,3.1236,1.1545,0.0616,0.0220,0.8600,1.0200,11.0583
+OOMA,"Ooma, Inc.",NYQ,Technology,Software - Application,19.49,19.82,1.9547,18.4698,0.0841,0.2480,,,60.0606
+OCTV,Octave Intelligence plc,NMS,Technology,Software - Application,17.4,17.22,4.4903,-20.9003,0.0863,0.0100,-0.2030,,14.9739
+NTSK,"Netskope, Inc.",NMS,Technology,Software - Infrastructure,11.71,12.075,15.1024,28.1018,0.1219,0.2780,,,
+NTNX,"Nutanix, Inc.",NMS,Technology,Software - Infrastructure,51.28,52.06,1.9389,0.3857,0.1444,0.1000,0.1380,1.1300,54.7895
+NTGR,"NETGEAR, Inc.",NMS,Technology,Communication Equipment,21.5,22.17,-3.4408,-12.0238,0.1194,-0.0200,,0.7400,
+NTCT,"NetScout Systems, Inc.",NMS,Technology,Software - Infrastructure,40.93,42.57,0.4126,4.7344,0.1165,-0.0100,-0.0200,1.6400,32.7577
+NOK,Nokia Corporation Sponsored,NYQ,Technology,Communication Equipment,12.07,12.715,-2.3791,-12.8170,0.2083,0.0240,,1.1800,79.5000
+NIQ,NIQ Global Intelligence plc,NYQ,,,9.88,9.71,11.8664,17.8398,0.0588,,,,
+NCNO,"nCino, Inc.",NMS,Technology,Software - Application,17.75,17.5,10.7595,16.3564,0.0841,0.1060,1.4530,1.0037,145.8333
+NAVN,"Navan, Inc.",NMS,Technology,Software - Application,25.67,25.37,7.0856,18.4235,0.1354,0.3990,,,
+NATL,NCR Atleos Corporation,NYQ,Technology,Software - Application,44.57,44.59,3.9879,1.0882,0.0376,0.0650,0.5710,0.3486,19.9062
+MTLS,Materialise NV,NMS,Technology,Software - Application,7.16,7.2502,1.6760,10.1362,0.1196,-0.0020,,1.2600,38.3158
+MQ,"Marqeta, Inc.",NMS,Technology,Software - Infrastructure,17.41,16.45,-1.4952,7.7880,0.1914,0.1920,,1.5000,411.7500
+MNTN,"MNTN, Inc.",NYQ,Technology,Software - Application,11.15,11.095,22.8682,20.7291,0.1064,0.1420,,,7.9820
+MEI,"Methode Electronics, Inc.",NYQ,Technology,Electronic Components,15.3,15.41,-20.6488,35.5321,0.1158,0.1590,,0.7800,
+LYTS,LSI Industries Inc.,NMS,Technology,Electronic Components,25.59,25.865,-2.5800,10.2985,0.0574,0.1360,-0.4610,0.4000,34.9527
+LYFT,"Lyft, Inc.",NMS,Technology,Software - Application,15.37,15.35,0.5902,9.4151,0.1955,0.1380,4.5510,0.1500,2.2427
+LSPD,Lightspeed Commerce Inc. Subord,NYQ,Technology,Software - Application,10.8,10.535,2.3810,10.4298,0.1141,0.1470,,,
+LIF,"Life360, Inc.",NMS,Technology,Software - Application,57.71,57.745,0.2952,23.8208,0.1228,0.3810,-0.3650,,33.0000
+LASR,"nLIGHT, Inc.",NMS,Technology,Semiconductors,63.25,67.7,3.6900,1.0035,0.0974,0.5520,,1.7800,
+KVYO,"Klaviyo, Inc. Series A",NYQ,Technology,Software - Application,16.9,16.61,11.1855,9.0670,0.1186,0.2790,,,
+KN,Knowles Corporation,NYQ,Technology,Electronic Components,36.78,38.09,-6.8249,-0.3401,0.1015,0.1580,,0.4300,53.6479
+KD,"Kyndryl Holdings, Inc.",NYQ,Technology,Information Technology Services,12.25,12.07,7.6203,4.4550,0.1489,-0.0080,-0.7540,,14.2059
+KC,Kingsoft Cloud Holdings Limited,NMS,Technology,Software - Application,9.1,9.17,3.0337,-19.3492,0.1291,0.3720,,,
+JKS,JinkoSolar Holding Company Limi,NYQ,Technology,Solar,15.84,16.205,1.8542,-10.4465,0.1023,-0.1150,,0.1400,
+ITRN,Ituran Location and Control Ltd,NMS,Technology,Scientific & Technical Instruments,57.14,59.3,-4.6930,-6.1102,0.1817,0.1880,0.1500,3.4100,19.4426
+IQMX,IQM Quantum Computers Oyj,NMS,Technology,Computer Hardware,13.03,14.41,31.7505,29.4602,2.6587,,,,
+IOT,Samsara Inc.,NYQ,Technology,Software - Infrastructure,35.93,36.98,15.3271,8.6905,0.1322,0.3050,,,370.2000
+IONQ,"IonQ, Inc.",NYQ,Technology,Computer Hardware,49.12,50.6743,-6.0690,-19.4108,0.1151,7.5470,,,129.7695
+INTA,"Intapp, Inc.",NMS,Technology,Software - Application,27.39,27.29,10.5754,12.6755,0.1084,0.1310,,0.5200,
+INGM,Ingram Micro Holding Corporatio,NYQ,Technology,Information Technology Services,25.65,26.23,-4.4444,-11.1751,0.0301,0.1370,0.4290,0.4023,17.2566
+INFY,Infosys Limited,NYQ,Technology,Information Technology Services,11.16,10.855,1.4486,-9.6933,0.1782,0.0660,0.1320,1.9700,13.5687
+INFQ,"Infleqtion, Inc.",NYQ,Technology,Software - Infrastructure,12.31,12.79,-7.5253,-13.7070,0.1775,0.1390,,,
+IMOS,ChipMOS TECHNOLOGIES INC.,NMS,Technology,Semiconductors,63.93,72.705,24.7084,30.4137,0.6275,0.2540,1.8640,0.5001,93.2116
+IIIV,"i3 Verticals, Inc.",NMS,Technology,Software - Infrastructure,21.69,21.715,2.9147,9.8381,0.0407,0.0620,,1.2400,197.4091
+IBTA,"Ibotta, Inc.",NYQ,Technology,Software - Application,35.57,32.11,-4.8561,1.9632,0.1791,-0.0250,,,
+HPQ,HP Inc.,NYQ,Technology,Computer Hardware,21.93,22.46,-0.8613,-10.4875,0.1022,0.0900,0.1080,18.0300,8.3130
+HPE,Hewlett Packard Enterprise Comp,NYQ,Technology,Communication Equipment,41.23,43.74,-1.4864,-12.0154,0.1186,0.4000,,0.8500,40.8878
+HLIT,Harmonic Inc.,NMS,Technology,Communication Equipment,14.07,14.515,-7.8680,3.0518,0.1394,0.4340,0.2300,1.8400,181.5000
+HIMX,"Himax Technologies, Inc.",NMS,Technology,Semiconductors,13.15,14.35,0.4330,-28.0222,0.2092,-0.0750,-0.6000,1.4900,75.6842
+GTLB,GitLab Inc.,NMS,Technology,Software - Infrastructure,32.07,32.29,8.0067,3.7323,0.0810,0.2310,,,
+GRND,Grindr Inc.,NYQ,Technology,Software - Application,16.06,15.85,9.7645,43.5688,0.0971,0.3830,-0.0100,,34.4565
+GLOB,Globant S.A.,NYQ,Technology,Information Technology Services,32.51,31.17,3.6902,-18.2866,0.2344,-0.0070,0.2070,0.8500,12.6789
+GILT,Gilat Satellite Networks Ltd.,NMS,Technology,Communication Equipment,12.88,13.27,1.9201,-8.8599,0.1173,0.2000,,4.9900,25.5192
+GIB,CGI Inc.,NYQ,Technology,Information Technology Services,66.48,65.57,2.8872,-1.5022,0.1155,0.0330,0.0350,1.2100,12.1426
+GFS,GlobalFoundries Inc.,NMS,Technology,Semiconductors,69.84,71.925,-11.1975,-6.8249,0.1089,0.0310,-0.5100,1.3800,52.5037
+GEN,Gen Digital Inc.,NMS,Technology,Software - Infrastructure,26.67,26.765,6.8890,3.4996,0.0723,0.2700,2.6060,1.5300,17.0478
+G,Genpact Limited,NYQ,Technology,Information Technology Services,29.1,28.87,3.6984,-10.3477,0.1182,0.0670,0.1310,1.1600,8.8589
+FTV,Fortive Corporation,NYQ,Technology,Scientific & Technical Instruments,62.65,62.855,3.6097,2.8807,0.0606,0.0770,-0.2070,0.9800,36.9765
+FSLY,"Fastly, Inc.",NMS,Technology,Software - Application,18.13,18.52,2.7778,-4.5408,0.0450,0.1980,,,
+FRSH,Freshworks Inc.,NMS,Technology,Software - Application,10.34,10.145,-0.6366,7.8108,0.1052,0.1650,,0.5600,16.6311
+FOUR,"Shift4 Payments, Inc.",NYQ,Technology,Software - Infrastructure,51.35,49.99,3.6492,32.7403,0.1085,0.3220,-0.1180,0.3700,57.4598
+FLYW,Flywire Corporation - Voting,NMS,Technology,Software - Infrastructure,18.75,18.255,3.5795,31.3401,0.1304,0.4100,,,75.9583
+FISV,"Fiserv, Inc.",NMS,,,52.33,51.08,4.9355,-2.8073,0.1446,,,,8.6847
+FIS,Fidelity National Information S,NYQ,Technology,Information Technology Services,41.8,40.69,5.1564,4.0708,0.0823,0.3010,29.7270,0.2300,7.8847
+FIG,"Figma, Inc.",NYQ,Technology,Software - Application,21.34,20.745,8.7788,-1.6351,0.2382,0.4610,,3.8800,
+EXTR,"Extreme Networks, Inc.",NMS,Technology,Communication Equipment,29.8,31.435,-1.6104,6.4085,0.0582,0.1140,2.0620,1.1000,262.2083
+EXLS,"ExlService Holdings, Inc.",NMS,Technology,Information Technology Services,27.02,26.88,5.1623,-8.7547,0.1874,0.1380,0.0080,0.8700,17.1274
+EVTC,"Evertec, Inc.",NYQ,Technology,Software - Infrastructure,29.63,28.755,4.2225,27.2345,0.0660,0.0840,-0.2740,,13.8245
+EVCM,EverCommerce Inc.,NMS,Technology,Software - Application,9.98,10.06,3.8184,11.0375,0.1824,0.0360,,0.4900,77.3846
+ESTC,Elastic N.V.,NYQ,Technology,Software - Application,58.04,58.04,1.9140,-6.5980,0.0840,0.1600,,1.3700,16.9213
+ERIC,Ericsson,NMS,Technology,Communication Equipment,10.79,11.06,-0.8520,-11.7013,0.2981,-0.1030,-0.7860,1.9000,14.3571
+EFOR,"Everforth, Inc.",NYQ,Technology,Information Technology Services,17.66,17.56,-6.1966,-12.6803,0.0637,0.0000,-0.7370,0.6400,7.8044
+DXC,DXC Technology Company,NYQ,Technology,Information Technology Services,9.91,9.955,12.3589,11.8539,0.1032,-0.0120,,0.4900,99.5500
+DT,"Dynatrace, Inc.",NYQ,Technology,Software - Application,44.77,45.426,2.5090,8.1823,0.1037,0.1940,-0.5570,0.9300,83.9815
+DSP,Viant Technology Inc.,NMS,Technology,Software - Application,12.96,12.87,-2.1358,6.1208,0.1057,0.2530,,0.8900,32.0750
+DSGX,The Descartes Systems Group Inc,NMS,Technology,Software - Application,72.795,71.96,3.5242,-4.3461,0.1429,0.1470,0.3370,1.4900,35.8060
+DQ,DAQO New Energy Corp.,NYQ,Technology,Semiconductor Equipment & Materials,12.25,12.35,-5.3640,-20.6808,0.0791,-0.7840,,0.1500,
+DOX,Amdocs Limited,NMS,Technology,Software - Infrastructure,51.75,51.25,0.7252,-11.1705,0.1039,0.0390,-0.1560,0.7000,10.2295
+DOCU,"DocuSign, Inc.",NMS,Technology,Software - Application,45.77,45.29,0.5329,-1.9064,0.1052,0.0870,0.0850,0.5400,29.4026
+DLO,DLocal Limited,NMS,Technology,Software - Infrastructure,14.88,14.68,14.1634,27.6762,0.1322,0.5490,-0.1000,,22.9219
+DGII,Digi International Inc.,NMS,Technology,Communication Equipment,72.15,75.06,2.4990,11.6300,0.3152,0.2510,0.0770,0.9800,66.4248
+DFIN,"Donnelley Financial Solutions, ",NYQ,Technology,Software - Application,46.21,45.95,10.6429,24.7963,0.1418,0.0220,0.0810,0.9700,33.5401
+DCBO,Docebo Inc.,NMS,Technology,Software - Application,18.24,17.86,2.8210,1.0181,0.1032,0.1450,,,15.2650
+DBX,"Dropbox, Inc.",NMS,Technology,Software - Infrastructure,28.56,27.87,1.7701,2.1429,0.0908,0.0080,-0.2380,13.6000,15.2377
+DAKT,"Daktronics, Inc.",NMS,Technology,Electronic Components,19.91,20.1,-0.4458,3.2888,0.1076,0.2090,,0.6100,21.8478
+CXM,"Sprinklr, Inc.",NYQ,Technology,Software - Application,5.41,5.36,3.2755,-0.7407,0.0890,0.0680,,0.7000,44.6667
+CTSH,Cognizant Technology Solutions ,NMS,Technology,Information Technology Services,41.99,41.63,7.4858,-21.4191,0.1910,0.0580,-0.0020,0.6900,9.0325
+CTS,CTS Corporation,NYQ,Technology,Electronic Components,60.5,61.13,-5.3275,-6.2006,0.0786,0.1070,0.2870,1.5600,26.1239
+CSIQ,Canadian Solar Inc.,NMS,Technology,Solar,14.455,15.16,2.8794,-10.8862,0.1559,-0.0990,,0.1300,
+CRSR,"Corsair Gaming, Inc.",NMS,Technology,Computer Hardware,8.9,9.34,0.9730,7.4799,0.0935,-0.0410,,,103.7778
+CRNC,Cerence Inc.,NMS,Technology,Software - Application,10.71,10.825,-0.2304,-1.9475,0.1079,-0.1770,-0.9230,,
+CORZ,"Core Scientific, Inc.",NMS,Technology,Software - Infrastructure,21.43,22.98,-11.4110,-15.3591,0.2261,0.4490,,,
+COHU,"Cohu, Inc.",NMS,Technology,Semiconductor Equipment & Materials,59.27,62.655,-7.9565,19.4058,0.1104,0.2930,,1.1500,
+CNXN,"PC Connection, Inc.",NMS,Technology,Electronics & Computer Distribution,72.43,72.19,-0.1245,0.5712,0.0899,0.0300,0.2780,1.9200,21.0466
+CNXC,Concentrix Corporation,NMS,Technology,Information Technology Services,23.6,23.827,-5.5886,-13.0022,0.0911,0.0190,0.3130,0.3100,
+CLBT,Cellebrite DI Ltd.,NMS,Technology,Software - Infrastructure,15.65,16.14,13.7165,20.0670,0.2489,0.1930,-0.3710,,57.5893
+CIFR,Cipher Digital Inc.,NMS,Technology,Information Technology Services,20.04,22.245,-10.5115,-8.5220,0.3302,-0.2880,,,
+CHYM,"Chime Financial, Inc.",NMS,Technology,Software - Application,20.87,20.755,-1.1667,18.1275,0.1341,0.2480,3.1310,,
+CGNX,Cognex Corporation,NMS,Technology,Scientific & Technical Instruments,67.8,70.67,3.3792,13.2714,0.1257,0.2430,1.1910,2.7100,83.1412
+CGNT,Cognyte Software Ltd.,NMS,Technology,Software - Infrastructure,8.99,9.005,7.7153,-0.6071,0.1130,0.1040,,,
+CEVA,"CEVA, Inc.",NMS,Technology,Semiconductors,40.42,46.03,6.9719,0.8103,0.2543,0.1150,,3.9600,
+CCSI,"Consensus Cloud Solutions, Inc.",NMS,Technology,Software - Infrastructure,37.94,37.475,-2.0518,11.5992,0.1127,0.0150,0.1670,0.4910,8.2002
+CCC,CCC Intelligent Solutions Holdi,NMS,Technology,Software - Application,5.58,5.655,15.2041,20.1064,0.1100,0.1180,,,94.0833
+CALX,"Calix, Inc",NYQ,Technology,Software - Infrastructure,38.48,38.935,8.0028,4.4394,0.1251,0.2710,,3.3400,79.4592
+BSY,"Bentley Systems, Incorporated",NMS,Technology,Software - Application,32.26,31.98,7.6211,-3.1345,0.1386,0.1450,0.0440,1.4300,36.7644
+BRZE,"Braze, Inc.",NMS,Technology,Software - Application,23.81,23.49,12.0410,1.8422,0.0961,0.3020,,1.2400,
+BOX,"Box, Inc.",NYQ,Technology,Software - Infrastructure,27.89,27.6,4.1024,4.1808,0.0799,0.1360,,0.5600,43.2188
+BLSH,Bullish,NYQ,Technology,Software - Infrastructure,25.57,25.1341,6.0958,-7.6292,0.1246,0.6550,,,
+BLKB,"Blackbaud, Inc.",NMS,Technology,Software - Application,30.09,28.91,-1.5662,4.5192,0.0679,0.0420,6.2030,0.3300,9.8000
+BL,"BlackLine, Inc.",NMS,Technology,Software - Application,29.88,28.81,2.9821,2.2518,0.0759,0.0970,0.3420,4.5300,68.6548
+ZYME,Zymeworks Inc.,NMS,Healthcare,Biotechnology,26.31,24.905,3.3403,4.0744,0.2573,-0.9110,,,
+ZVRA,"Zevra Therapeutics, Inc.",NMS,Healthcare,Biotechnology,13.98,13.93,-0.7852,14.9710,0.1005,0.7750,,10.6700,6.9154
+ZTS,Zoetis Inc.,NYQ,Healthcare,Drug Manufacturers - Specialty & Generic,74.8,73.495,0.2867,-6.8003,0.2999,0.0290,-0.0020,1.7900,12.0426
+ZBIO,"Zenas BioPharma, Inc.",NMS,Healthcare,Biotechnology,27.23,27.24,6.6145,54.6848,0.0440,,,,
+XRAY,DENTSPLY SIRONA Inc.,NMS,Healthcare,Medical Instruments & Supplies,11.65,11.685,7.9020,13.7914,0.0943,0.0010,,0.7500,
+XERS,"Xeris Biopharma Holdings, Inc.",NMS,Healthcare,Drug Manufacturers - Specialty & Generic,8.28,8.415,8.7209,34.8558,0.3031,0.3830,,,120.2143
+WRBY,Warby Parker Inc.,NYQ,Healthcare,Medical Instruments & Supplies,29.26,29.875,-0.7805,27.0736,0.1346,0.0830,-0.0850,,2987.5000
+WGS,GeneDx Holdings Corp.,NMS,Healthcare,Diagnostics & Research,67.51,66.5462,-3.7237,28.4676,0.0774,0.1740,,,
+WEAV,"Weave Communications, Inc.",NYQ,Healthcare,Health Information Services,6.58,6.61,,,0.1184,0.1740,,,
+WAY,Waystar Holding Corp.,NMS,Healthcare,Health Information Services,23.46,23.53,,,0.1064,0.2240,0.4790,0.7333,35.1246
+VTRS,Viatris Inc.,NMS,Healthcare,Drug Manufacturers - Specialty & Generic,16.7,16.735,,,,,,,
+VREX,Varex Imaging Corporation,NMS,Healthcare,Medical Devices,10.61,10.74,,,,,,,
+VOR,Vor Biopharma Inc.,NMS,Healthcare,Biotechnology,20.59,19.33,,,,,,,
+VIR,"Vir Biotechnology, Inc.",NMS,Healthcare,Biotechnology,10.04,9.8856,,,,,,,
+USPH,"U.S. Physical Therapy, Inc.",NYQ,Healthcare,Medical Care Facilities,72.35,71.6,,,,,,,
+UPB,"Upstream Bio, Inc.",NMS,Healthcare,Biotechnology,7.51,7.385,,,,,,,
+TYRA,"Tyra Biosciences, Inc.",NMS,Healthcare,Biotechnology,30.62,30.525,,,,,,,
+TXG,"10x Genomics, Inc.",NMS,Healthcare,Health Information Services,39.01,39.47,,,,,,,
+TSHA,"Taysha Gene Therapies, Inc.",NMS,Healthcare,Biotechnology,6.53,6.365,,,,,,,

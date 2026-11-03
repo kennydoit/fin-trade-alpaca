@@ -1,0 +1,5 @@
+screener_rank,score_raw,score_norm,pct_1w_n,pct_1m_n,rel_volume_n,revenueGrowth_n,earningsQuarterlyGrowth_n,rec_n,insider_n,valuation_n,symbol,shortName,exchange,sector,industry,eodprice,regularMarketPrice,pct_1w,pct_1m,rel_volume,revenueGrowth,earningsQuarterlyGrowth,pegRatio,trailingPE
+1,0.881963,1.000000,1.000000,1.000000,1.000000,0.662192,1.000000,0.500000,0.500000,0.750000,YEXT,"Yext, Inc.",NYQ,Technology,Software - Infrastructure,6.39,6.435,2.4681,10.1884,0.2352,-0.0180,-0.5080,,37.8529
+2,0.633534,0.579550,0.867065,0.837533,0.000000,1.000000,0.500000,0.500000,0.500000,0.000000,ZETA,Zeta Global Holdings Corp.,NYQ,Technology,Software - Infrastructure,31.04,31.14,1.8979,8.0125,0.1647,0.4350,,0.7700,inf
+3,0.391050,0.169162,0.120323,0.469376,0.919149,0.000000,0.500000,0.500000,0.500000,0.500000,ZYME,Zymeworks Inc.,NMS,Healthcare,Biotechnology,26.05,26.09,-1.3051,3.0818,0.2295,-0.9060,,,
+4,0.291098,0.000000,0.000000,0.000000,0.678014,0.744966,0.000000,0.500000,0.500000,1.000000,XYZ,"Block, Inc.",NYQ,Technology,Software - Infrastructure,78.31,77.63,-1.8212,-3.2045,0.2125,0.0930,-0.8360,0.6100,138.6250

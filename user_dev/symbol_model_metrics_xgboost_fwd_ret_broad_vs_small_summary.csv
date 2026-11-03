@@ -1,0 +1,3 @@
+dataset,n_models,mean_holdout_r2,median_holdout_r2,positive_holdout_r2
+13-symbol regularized,13,-4.329853592340522,-0.4383580147337254,1
+192-symbol broad+index regularized,192,-7.07717930788725,-0.6445759568119062,40

@@ -1,0 +1,4 @@
+symbol,qty,side,market_value,avg_entry_price,current_price,unrealized_pl,unrealized_plpc,unrealized_intraday_pl,unrealized_intraday_plpc,cost_basis,asset_id,exchange,asset_class,asset_marginable
+AIQ,2.207758318,PositionSide.LONG,139.729024,67.335269,63.29,-8.930976,-0.06008,4.260974,0.03145,148.66,44049b68-0392-4e5c-a9e4-f0535ea94685,AssetExchange.NASDAQ,AssetClass.US_EQUITY,True
+DTCR,1.395913849,PositionSide.LONG,43.049983,31.549225,30.84,-0.990017,-0.02248,1.144649,0.02732,44.04,7303b79c-b55e-4af9-ac42-55afd645d1c3,AssetExchange.NASDAQ,AssetClass.US_EQUITY,True
+SCHB,1.108076507,PositionSide.LONG,31.524777,29.095464,28.45,-0.715223,-0.02218,0.465393,0.01498,32.24,7a275005-aaaa-42c4-b6b2-f14a37376f67,AssetExchange.ARCA,AssetClass.US_EQUITY,True
